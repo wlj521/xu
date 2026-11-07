@@ -1,0 +1,131 @@
+package app
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+
+	"xu/internal/sshx"
+)
+
+func TestHumanSize(t *testing.T) {
+	cases := map[int64]string{
+		0:           "0 B",
+		512:         "512 B",
+		1024:        "1.0 KiB",
+		1024 * 1024: "1.0 MiB",
+	}
+	for in, want := range cases {
+		if got := humanSize(in); got != want {
+			t.Errorf("humanSize(%d) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSafeLocalName(t *testing.T) {
+	cases := map[string]string{
+		"a:b.txt": "a_b.txt",
+		"CON":     "_CON",
+		"con.txt": "_con.txt",
+		"..":      "unnamed",
+		"a. ":     "a",
+		"配置.txt":  "配置.txt",
+	}
+	for in, want := range cases {
+		if got := safeLocalName(in); got != want {
+			t.Errorf("safeLocalName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestValidName(t *testing.T) {
+	for _, name := range []string{"a", "配置", "a b", ".hidden"} {
+		if !validName(name) {
+			t.Errorf("validName(%q) = false", name)
+		}
+	}
+	for _, name := range []string{"", " ", ".", "..", "a/b", `a\b`, "a\x00b"} {
+		if validName(name) {
+			t.Errorf("validName(%q) = true", name)
+		}
+	}
+}
+
+type fakeInfo struct {
+	name string
+	dir  bool
+	size int64
+}
+
+func (f fakeInfo) Name() string { return f.name }
+func (f fakeInfo) Size() int64  { return f.size }
+func (f fakeInfo) Mode() os.FileMode {
+	if f.dir {
+		return os.ModeDir
+	}
+	return 0
+}
+func (f fakeInfo) ModTime() time.Time { return time.Time{} }
+func (f fakeInfo) IsDir() bool        { return f.dir }
+func (f fakeInfo) Sys() any           { return nil }
+
+func TestSortEntries(t *testing.T) {
+	list := []os.FileInfo{
+		fakeInfo{name: "b.txt"},
+		fakeInfo{name: "adir", dir: true},
+		fakeInfo{name: "A.txt"},
+	}
+	sortEntries(list)
+
+	if got := []string{list[0].Name(), list[1].Name(), list[2].Name()}; got[0] != "adir" || got[1] != "A.txt" || got[2] != "b.txt" {
+		t.Fatalf("sorted names = %v", got)
+	}
+}
+
+func TestPromptNewLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	b := newFileBrowser(1, nil, dir, "")
+	a := New()
+	a.promptNewFile(b, false)
+	a.promptValue = "notes.txt"
+	a.submitPrompt()
+	if a.fileErr != "" {
+		t.Fatalf("new file: %s", a.fileErr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "notes.txt")); err != nil {
+		t.Fatalf("new file not created: %v", err)
+	}
+}
+
+func TestFileRowContextMenu(t *testing.T) {
+	a := New()
+	a.terms = []*termSession{{ID: 1, Title: "root@test", profile: sshx.Profile{Host: "test", Port: 22, Username: "root"}}}
+	a.activeTerm = 0
+	a.bottomFiles = true
+	b := newFileBrowser(1, nil, t.TempDir(), "/tmp")
+	b.remoteDir = "/tmp"
+	b.remotePathInput = "/tmp"
+	b.remoteEntries = []os.FileInfo{fakeInfo{name: "config.yaml", size: 12}}
+	a.browsers[1] = b
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	if err := tt.RightClick("config.yaml"); err != nil {
+		t.Fatalf("right click: %v", err)
+	}
+	menu := tt.Menu()
+	want := map[string]bool{"新建文件": false, "新建文件夹": false, "删除": false, "下载到本机": false}
+	for _, item := range menu {
+		if _, ok := want[item]; ok {
+			want[item] = true
+		}
+	}
+	for item, found := range want {
+		if !found {
+			t.Fatalf("context menu %q missing %q", menu, item)
+		}
+	}
+}

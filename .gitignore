@@ -1,0 +1,21 @@
+/build/
+/.mygo/
+mygo_windows_*.syso
+
+# Local test build copied to the project root (see build-local.ps1)
+/Xu.exe
+/*.dll
+/icon.png
+/xu.db
+
+# Go temp/build files kept inside the project for antivirus trust
+/.gotmp/
+
+# Native DLLs staged for the -tags=portable build
+/internal/bundle/assets/*.dll
+
+# Editor and agent state
+/.idea/
+/.agents/
+/.claude/
+/.vscode/
