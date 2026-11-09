@@ -9,95 +9,9 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func (a *App) toggleBottomFiles() {
-	a.toggleDock()
-}
-
-func (a *App) bottomFilesView(c *ui.Context, t *ui.Theme, ts *termSession, b *fileBrowser) {
-	ui.Column(c).FillHeight().Background(colPanel).
-		BorderWidth(1, 0, 0, 0).BorderColor(colLine).Children(func() {
-		ui.Row(c).Height(6).Shrink(0).Center().Children(func() {
-			ui.Box(c).Width(34).Height(2).Radius(1).Background(colLine2)
-		})
-		a.bottomFilesHead(c, t, b)
-		switch a.bottomFileTab {
-		case 1:
-			a.bottomTransfers(c, t)
-		case 2:
-			a.bottomCommands(c, t)
-		default:
-			a.bottomFilesPane(c, t, b)
-		}
-	})
-}
-
-func (a *App) bottomFilesHead(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	ui.Row(c).Height(43).Shrink(0).Padding(0, 9).Gap(8).AlignItems(ui.Center).
-		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
-		for i, label := range []string{"文件", "传输", "命令"} {
-			i, label := i, label
-			active := a.bottomFileTab == i
-			btn := ui.ButtonBase(c.Key(fmt.Sprintf("bf-tab-%d", i))).Height(28).Padding(0, 11).Radius(7).Center()
-			if active {
-				btn.Background(colPanel2)
-			} else if btn.Hovered() {
-				btn.Background(t.SurfaceHover)
-			}
-			btn.Children(func() {
-				ui.Text(c, label).FontSize(11).TextColor(condColor(active, colText, colMuted)).NoWrap()
-			})
-			if btn.Clicked() {
-				a.bottomFileTab = i
-			}
-		}
-
-		ui.Text(c, "").Grow(1)
-
-		if iconButton(c, t, "bf-refresh", iconRefresh, "刷新").Clicked() {
-			b.loadRemote()
-		}
-		if iconButton(c, t, "bf-upload", iconUpload, "上传").Clicked() {
-			a.uploadViaDialog(b)
-		}
-		if iconButton(c, t, "bf-download", iconDownload, "下载").Clicked() {
-			a.downloadSelected(b)
-		}
-		if iconButton(c, t, "bf-newfolder", iconNewFolder, "新建文件夹").Clicked() {
-			a.promptMkdir(b, true)
-		}
-		if iconButton(c, t, "bf-expand", iconExpand, "展开完整文件管理").Clicked() {
-			a.filesOpen = true
-		}
-		if iconButton(c, t, "bf-collapse", iconChevron, "收起文件面板").Clicked() {
-			a.bottomFiles = false
-		}
-
-		more := iconButton(c, t, "bf-more", iconMore, "更多")
-		more.Menu(func(m *ui.Menu) {
-			if m.Item("上级目录").Chosen() {
-				a.navigateRemote(b, path.Dir(b.remoteDir))
-			}
-			if m.Item("刷新").Shortcut(ui.Cmd, ui.KeyR).Chosen() {
-				b.loadRemote()
-			}
-			m.Separator()
-			if m.Item("重命名").Chosen() {
-				a.promptRename(b, true)
-			}
-			if m.Item("删除").Chosen() {
-				a.deleteSelected(b, true)
-			}
-			m.Separator()
-			if m.Item("上传文件…").Chosen() {
-				a.uploadViaDialog(b)
-			}
-			if m.Item("下载所选").Chosen() {
-				a.downloadSelected(b)
-			}
-		})
-	})
-}
-
+// bottomFilesPane is the FinalShell-style file dock: a directory tree on the
+// left, the breadcrumb and actions on top of the remote file table on the
+// right. A single click on a folder row opens it.
 func (a *App) bottomFilesPane(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 	ui.Row(c).FillHeight().AlignItems(ui.Stretch).Children(func() {
 		a.bottomFileTree(c, t, b)
@@ -118,20 +32,72 @@ func (a *App) bottomFilesPane(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 				ui.Text(c, shortLabel(b.remoteErr, 100)).FontSize(9).TextColor(colRed).Padding(2, 12)
 			}
 
-			if ui.Table(c, &b.remoteState, bottomFileColumns(), len(b.remoteEntries), func(row, col int) {
-				bottomRemoteCell(c, b, row, col)
-			}).Grow(1).Submitted() {
+			wide := a.dockFileTableWide(c)
+			cols := bottomFileColumns()
+			if wide {
+				cols = fileColumns()
+			}
+			opened := false
+			table := ui.Table(c, &b.remoteState, cols, len(b.remoteEntries), func(row, col int) {
+				if row < 0 || row >= len(b.remoteEntries) {
+					return
+				}
+				f := b.remoteEntries[row]
+				cell := ui.Box(c).Fill().OnClick(func() {
+					a.clickRemoteRow(b, row)
+				})
+				cell.ContextMenu(func(m *ui.Menu) {
+					b.remoteSel = row
+					a.fileContextMenu(m, b, true)
+				})
+				if !f.IsDir() && cell.DoubleClicked() {
+					b.remoteSel = row
+					a.openRemoteSelected(b)
+					opened = true
+				}
+				cell.Children(func() {
+					if wide {
+						remoteCell(c, b, row, col)
+					} else {
+						bottomRemoteCell(c, b, row, col)
+					}
+				})
+			}).Grow(1)
+			table.ContextMenu(func(m *ui.Menu) {
+				a.fileBackgroundMenu(m, b, true)
+			})
+			// Double clicks are also Submitted; the cell already opened the
+			// file, so only the keyboard's Enter opens it here.
+			if table.Submitted() && !opened && !a.editorOpen {
 				a.openRemoteSelected(b)
 			}
 		})
 	})
 }
 
+// dockFileTableWide picks the full column set (type, mode, owner) when the
+// window has room, and the compact name/size/date set when it does not.
+func (a *App) dockFileTableWide(c *ui.Context) bool {
+	w, _ := c.Size()
+	return w >= 1100
+}
+
+// clickRemoteRow opens a folder on a single click and just chooses a file.
+func (a *App) clickRemoteRow(b *fileBrowser, row int) {
+	if row < 0 || row >= len(b.remoteEntries) {
+		return
+	}
+	b.remoteSel = row
+	if f := b.remoteEntries[row]; f.IsDir() {
+		a.navigateRemote(b, path.Join(b.remoteDir, f.Name()))
+	}
+}
+
 func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	ui.Row(c).Height(30).Shrink(0).Padding(0, 8).Gap(2).AlignItems(ui.Center).
+	ui.Row(c).Height(32).Shrink(0).Padding(0, 8).Gap(2).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Background(colPanel).Children(func() {
 		up := ui.ButtonBase(c.Key("bf-path-up")).Size(22, 22).Center().Radius(4).
-			Tooltip("上级目录").Disabled(b.remoteDir == "/")
+			Tooltip("上级目录").Label("上级目录").Disabled(b.remoteDir == "/")
 		if up.Hovered() && b.remoteDir != "/" {
 			up.Background(t.SurfaceHover)
 		}
@@ -142,23 +108,65 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			a.navigateRemote(b, path.Dir(b.remoteDir))
 		}
 
-		a.pathCrumb(c, t, b, "/", "/", b.remoteDir == "/")
-		if b.remoteDir != "/" {
-			acc := "/"
-			segs := strings.Split(strings.Trim(b.remoteDir, "/"), "/")
-			for i, seg := range segs {
-				if seg == "" {
-					continue
+		// The crumbs scroll sideways when a deep path outgrows the bar, so
+		// the actions on the right keep their room.
+		ui.ScrollHorizontal(c).Grow(1).Height(32).Children(func() {
+			ui.Row(c).Height(32).Gap(2).AlignItems(ui.Center).Children(func() {
+				a.pathCrumb(c, t, b, "/", "/", b.remoteDir == "/")
+				if b.remoteDir != "/" {
+					acc := "/"
+					segs := strings.Split(strings.Trim(b.remoteDir, "/"), "/")
+					for i, seg := range segs {
+						if seg == "" {
+							continue
+						}
+						acc = path.Join(acc, seg)
+						ui.Text(c, "›").FontSize(9).TextColor(colMuted2)
+						a.pathCrumb(c, t, b, shortLabel(seg, 18), acc, i == len(segs)-1)
+					}
 				}
-				acc = path.Join(acc, seg)
-				ui.Text(c, "›").FontSize(9).TextColor(colMuted2)
-				a.pathCrumb(c, t, b, shortLabel(seg, 18), acc, i == len(segs)-1)
-			}
-		}
+			})
+		})
 
-		ui.Text(c, "").Grow(1)
 		ui.Text(c, fmt.Sprintf("%d 项", len(b.remoteEntries))).FontSize(8.5).
 			Font("Cascadia Code").TextColor(colMuted2).NoWrap()
+
+		ui.Box(c).Width(1).Height(14).Background(colLine).MarginX(5)
+
+		if paneIconButton(c, t, "bf-act-refresh", iconRefresh, "刷新").Clicked() {
+			b.loadRemote()
+		}
+		if paneIconButton(c, t, "bf-act-new", iconNewFolder, "新建文件夹").Clicked() {
+			a.promptMkdir(b, true)
+		}
+		if paneIconButton(c, t, "bf-act-upload", iconUpload, "上传文件").Clicked() {
+			a.uploadViaDialog(b)
+		}
+		if paneIconButton(c, t, "bf-act-download", iconDownload, "下载所选").Clicked() {
+			a.downloadSelected(b)
+		}
+		more := paneIconButton(c, t, "bf-act-more", iconMore, "更多")
+		more.Menu(func(m *ui.Menu) {
+			if m.Item("新建文件").Chosen() {
+				a.promptNewFile(b, true)
+			}
+			if m.Item("新建文件夹").Chosen() {
+				a.promptMkdir(b, true)
+			}
+			if m.Item("重命名").Chosen() {
+				a.promptRename(b, true)
+			}
+			if m.Item("删除").Chosen() {
+				a.deleteSelected(b, true)
+			}
+			m.Separator()
+			if m.Item("上传文件…").Chosen() {
+				a.uploadViaDialog(b)
+			}
+			if m.Item("下载所选").Chosen() {
+				a.downloadSelected(b)
+			}
+		})
 	})
 }
 
@@ -180,9 +188,9 @@ func (a *App) pathCrumb(c *ui.Context, t *ui.Theme, b *fileBrowser, label, targe
 }
 
 func (a *App) bottomFileTree(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	ui.Column(c).Width(200).FillHeight().Background(colTreeBg).
+	ui.Column(c).Width(190).FillHeight().Background(colTreeBg).
 		BorderWidth(0, 1, 0, 0).BorderColor(colLine).Children(func() {
-		ui.Row(c).Height(30).Shrink(0).Padding(0, 9).Gap(6).AlignItems(ui.Center).
+		ui.Row(c).Height(32).Shrink(0).Padding(0, 9).Gap(6).AlignItems(ui.Center).
 			BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
 			iconEl(c, iconFolder, 12, colMuted2)
 			ui.Text(c, "目录").FontSize(9.5).FontWeight(650).LetterSpacing(0.4).
@@ -190,7 +198,7 @@ func (a *App) bottomFileTree(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			ui.Text(c, "").Grow(1)
 			label := "SFTP"
 			if ts := a.activeTerminal(); ts != nil {
-				label = shortLabel(ts.Title, 22)
+				label = shortLabel(ts.Title, 16)
 			}
 			ui.Text(c, label).FontSize(8.5).Font("Cascadia Code").
 				TextColor(colMuted2).NoWrap()
@@ -216,7 +224,7 @@ func (a *App) treeDirRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 
 		if hasKids {
 			twisty := ui.ButtonBase(c.Key("bf-tw-"+dir)).Size(16, 16).Center().Radius(4).
-				Tooltip(condLabel(open, "收起源目录", "展开源目录"))
+				Tooltip(condLabel(open, "收起目录", "展开目录"))
 			if twisty.Hovered() {
 				twisty.Background(t.SurfaceHover)
 			}
@@ -280,49 +288,6 @@ func condLabel(cond bool, yes, no string) string {
 		return yes
 	}
 	return no
-}
-
-func (a *App) bottomCommands(c *ui.Context, t *ui.Theme) {
-	ui.Column(c).Grow(1).Fill().Center().Gap(6).Padding(20).Children(func() {
-		iconEl(c, iconHistory, 24, colMuted2)
-		ui.Text(c, "命令历史").FontSize(11).TextColor(colMuted)
-		if len(a.commandHistory) == 0 {
-			ui.Text(c, "在终端下方的命令栏输入命令，回车即可执行").FontSize(9).TextColor(colMuted2)
-			return
-		}
-		ui.Column(c).Width(420).Gap(2).Children(func() {
-			for i := len(a.commandHistory) - 1; i >= 0 && i >= len(a.commandHistory)-6; i-- {
-				cmd := a.commandHistory[i]
-				btn := ui.ButtonBase(c.Key("hist-"+cmd)).Height(26).Padding(0, 8).Radius(6).Gap(6)
-				if btn.Hovered() {
-					btn.Background(t.SurfaceHover)
-				}
-				btn.Children(func() {
-					iconEl(c, iconCommand, 11, colMuted2)
-					ui.Text(c, shortLabel(cmd, 54)).FontSize(9.5).Font("Cascadia Code").TextColor(colMuted)
-				})
-				if btn.Clicked() {
-					a.commandInput = cmd
-					a.bottomFileTab = 0
-				}
-			}
-		})
-	})
-}
-
-func (a *App) bottomTransfers(c *ui.Context, t *ui.Theme) {
-	if a.transfer == nil {
-		ui.Column(c).Grow(1).Fill().Center().Gap(6).Padding(20).Children(func() {
-			iconEl(c, iconUpload, 24, colMuted2)
-			ui.Text(c, "暂无传输任务").FontSize(11).TextColor(colMuted)
-			ui.Text(c, "把文件拖进远端目录，或用上方的上传按钮").FontSize(9).TextColor(colMuted2)
-		})
-		return
-	}
-	ui.Column(c).Grow(1).Padding(12).Gap(8).Children(func() {
-		ui.Text(c, "传输").FontSize(10).Bold().TextColor(colMuted)
-		a.transferBar(c, t)
-	})
 }
 
 func (a *App) uploadViaDialog(b *fileBrowser) {

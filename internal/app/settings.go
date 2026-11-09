@@ -15,7 +15,6 @@ type appSettings struct {
 	ScrollbackMB  int
 	Theme         int  // 0 follows the system, 1 dark, 2 light
 	Accent        int  // 0 blue, 1 teal, 2 violet, 3 orange
-	TabsVertical  bool // vertical channel list instead of the top tab strip
 	CopyOnSelect  bool // selection copies to the clipboard
 	FindHighlight bool // terminal search highlights matches
 	AutoReconnect bool // reconnects dropped sessions
@@ -75,9 +74,10 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 		section = 0
 	}
 
+	dlgW, dlgH := fitDialog(c, 760, 560)
 	ui.DialogBase(c, &a.settingsOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(shade)
-		panel.Width(760).Height(560).Padding(0).Background(colPanel).
+		panel.Width(dlgW).Height(dlgH).Padding(0).Background(colPanel).
 			Border(1, colLine2).Radius(14).
 			Shadow(0, 26, 70, 0, ui.Hex("#000000").Alpha(0.42)).Children(func() {
 			ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
@@ -216,8 +216,8 @@ func (a *App) settingsAppearance(c *ui.Context, t *ui.Theme) {
 	})
 
 	settingsGroup(c, "布局", false, func() {
-		settingsRow(c, "桌面布局", "左侧唯一会话树；文件、传输、隧道与命令集中在底部面板，右侧仅保留实时监控。", nil)
-		settingsNote(c, iconActivity, "底部文件面板与右侧监控各自带收起按钮，收起后会保留一个可点击的展开入口，不占用顶部操作区。")
+		settingsRow(c, "桌面布局", "左侧栏是服务器监控；打开的会话与新标签页集中在顶部标签栏，文件、传输、隧道与命令在底部面板。", nil)
+		settingsNote(c, iconActivity, "服务器监控与底部文件面板各自带收起按钮，收起后会保留一个可点击的展开入口，不占用顶部操作区。")
 	})
 }
 
@@ -378,8 +378,10 @@ func (a *App) settingsAbout(c *ui.Context, t *ui.Theme) {
 		pairs := [][2]string{
 			{"新建连接", "Ctrl N"},
 			{"本地终端", "Ctrl T"},
+			{"新建标签页", "Ctrl Alt T"},
+			{"连接管理器", "Ctrl Alt C"},
 			{"终端查找", "Ctrl Shift F"},
-			{"右侧监控", "Ctrl B"},
+			{"服务器监控", "Ctrl B"},
 			{"底部面板", "Ctrl J"},
 			{"全局搜索", "Ctrl K"},
 		}
@@ -518,9 +520,6 @@ func (a *App) loadSettings() {
 			a.settings.Theme = n
 		}
 	}
-	if values["ui.tabs.vertical"] == "1" {
-		a.settings.TabsVertical = true
-	}
 	if v := values["ui.accent"]; v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 3 {
 			a.settings.Accent = n
@@ -559,16 +558,11 @@ func (a *App) saveSettings() {
 	a.settings.ScrollbackMB = scroll
 
 	if a.store != nil {
-		tabsVertical := "0"
-		if a.settings.TabsVertical {
-			tabsVertical = "1"
-		}
 		values := map[string]string{
 			"terminal.font.family":      a.settings.FontFamily,
 			"terminal.font.size":        strconv.Itoa(size),
 			"terminal.scrollback_mb":    strconv.Itoa(scroll),
 			"terminal.theme":            strconv.Itoa(a.settings.Theme),
-			"ui.tabs.vertical":          tabsVertical,
 			"ui.accent":                 strconv.Itoa(a.settings.Accent),
 			"terminal.copy_on_select":   boolText(a.settings.CopyOnSelect),
 			"terminal.find_highlight":   boolText(a.settings.FindHighlight),
@@ -598,6 +592,9 @@ func boolText(v bool) string {
 }
 
 func (a *App) termDisplay() termDisplay {
+	// New terminals must see the palette of the current theme, even when the
+	// app creates one before the first frame paints the interface.
+	a.updatePalette(a.uiDark())
 	size := a.settings.FontSize
 	if size < 8 || size > 40 {
 		size = 14

@@ -29,13 +29,13 @@ func (a *App) openMonitor() {
 		return
 	}
 	if ts.local {
-		a.sidebarVisible = true
+		a.monitorCollapsed = false
 		return
 	}
 	if a.finding {
 		a.closeFind()
 	}
-	a.sidebarVisible = true
+	a.monitorCollapsed = false
 	a.startMonitorFor(ts, false)
 }
 

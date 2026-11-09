@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -38,9 +37,7 @@ type App struct {
 	searchOpen  bool
 	searchQuery string
 
-	sidebarVisible   bool // right-hand server inspector
-	sidebarCollapsed bool // left-hand connection tree
-	nav              navView
+	monitorCollapsed bool // left-hand server monitor collapsed to its rail
 	formOpen         bool
 	pickerOpen       bool
 	directConnect    bool
@@ -63,6 +60,31 @@ type App struct {
 
 	terms      []*termSession
 	activeTerm int
+
+	// tabs is the top tab strip: open terminal sessions and quick-connect
+	// pages, in the order the user opened them. terms stays the canonical
+	// list of sessions; activeTerm is the index of the active tab's session
+	// (-1 while a quick-connect page is in front).
+	tabs            []*appTab
+	activeTab       int
+	nextTabID       int64
+	pendingQuickTab int64 // quick-connect tab that hosts the connecting session
+
+	// Connection manager dialog ("连接管理器").
+	managerOpen   bool
+	managerFilter string
+	managerSel    int64
+	managerErr    string
+
+	// Quick-connect page filter.
+	quickFilter string
+
+	// Host key confirmation, asked from a background dial and answered by
+	// the in-app modal instead of a native message box.
+	hostKeyOpen        bool
+	hostKeyHost        string
+	hostKeyFingerprint string
+	hostKeyAck         chan bool
 
 	trustMu sync.Mutex
 	trusted map[string]string
@@ -139,8 +161,6 @@ func New() *App {
 	return &App{
 		ctx:                ctx,
 		stop:               cancel,
-		sidebarVisible:     true,
-		sidebarCollapsed:   false,
 		formOpen:           false,
 		systemDark:         true,
 		port:               "22",
@@ -170,28 +190,6 @@ func New() *App {
 }
 
 func (a *App) Attach(w *mygo.Window) { a.win = w }
-
-func (a *App) activateTerm(i int) {
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
-		return
-	}
-	if i < 0 || i >= len(a.terms) {
-		return
-	}
-	if a.finding {
-		a.closeFind()
-	}
-	a.activeTerm = i
-	a.nav = navWorkspace
-	a.formOpen = false
-	a.pickerOpen = false
-	a.filesOpen = false
-	a.monitorOpen = false
-	a.forwardOpen = false
-	a.batchOpen = false
-	a.settingsOpen = false
-}
 
 func (a *App) SetStatus(msg string) { a.status = msg }
 
@@ -264,39 +262,46 @@ func (a *App) View(c *ui.Context) {
 	if c.Shortcut(ui.Cmd, ui.KeyJ) {
 		a.toggleDock()
 	}
+	if c.Shortcut(ui.Cmd|ui.Alt, ui.KeyT) {
+		a.openQuickTab()
+		a.status = "从快速连接中选择服务器"
+	}
+	if c.Shortcut(ui.Cmd|ui.Alt, ui.KeyC) {
+		a.openConnectionManager()
+	}
 	if c.Shortcut(ui.Cmd, ui.KeyB) {
-		a.sidebarVisible = !a.sidebarVisible
+		a.toggleMonitor()
 	}
 	if c.Shortcut(ui.Cmd|ui.Alt, ui.KeyB) {
-		a.sidebarCollapsed = !a.sidebarCollapsed
-		if a.sidebarCollapsed {
-			a.status = "左侧连接栏已收起"
-		} else {
-			a.status = "左侧连接栏已展开"
-		}
+		a.toggleMonitor()
 	}
 
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
 		a.titleBar(c, t, bar)
 		ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
-			if !a.sidebarCollapsed {
-				a.shellSidebar(c, t)
+			if a.monitorCollapsed {
+				a.inspectorRail(c, t)
+			} else {
+				a.shellInspector(c, t)
 			}
 			a.shellMain(c, t)
-			if a.sidebarVisible {
-				a.shellInspector(c, t)
-			} else {
-				a.inspectorRail(c, t)
-			}
 		})
 		if a.formOpen {
-			a.connectModal(c, t)
+			if !a.hostKeyOpen {
+				a.connectModal(c, t)
+			}
+		}
+		if a.managerOpen {
+			a.connectionManagerModal(c, t)
 		}
 		if a.settingsOpen {
 			a.settingsModal(c, t)
 		}
 		if a.searchOpen {
 			a.searchModal(c, t)
+		}
+		if a.hostKeyOpen {
+			a.hostKeyModal(c, t)
 		}
 		if settingsWasOpen && !a.settingsOpen {
 			a.saveSettings()
@@ -411,6 +416,11 @@ func (a *App) connect() {
 	p.Password = a.effectivePassword()
 	direct := a.directConnect
 	a.directConnect = false
+	if tab := a.activeTabRef(); tab != nil && tab.kind == tabQuickConnect {
+		a.pendingQuickTab = tab.id
+	} else {
+		a.pendingQuickTab = 0
+	}
 
 	a.connectErr = ""
 	a.connecting = true
@@ -423,6 +433,7 @@ func (a *App) doConnect(p sshx.Profile, direct bool) {
 		a.post(func() {
 			a.connecting = false
 			a.connectingProfileID = 0
+			a.pendingQuickTab = 0
 			a.connectErr = msg
 			a.status = "连接失败: " + shortLabel(msg, 60)
 			if direct {
@@ -446,9 +457,9 @@ func (a *App) doConnect(p sshx.Profile, direct bool) {
 
 	a.post(func() {
 		a.terms = append(a.terms, ts)
-		a.activeTerm = len(a.terms) - 1
-		a.nav = navWorkspace
+		a.attachSessionTab(ts)
 		a.formOpen = false
+		a.managerOpen = false
 		a.filesOpen = false
 		a.monitorOpen = false
 		a.forwardOpen = false
@@ -470,6 +481,8 @@ func (a *App) doConnect(p sshx.Profile, direct bool) {
 		a.password = ""
 		a.connectErr = ""
 		a.directConnect = false
+		a.hostKeyHost = ""
+		a.hostKeyFingerprint = ""
 		a.status = ""
 	})
 }
@@ -481,31 +494,7 @@ func (a *App) trustHost(host, fingerprint string) bool {
 }
 
 func (a *App) confirmHostKey(hk *sshx.HostKeyError) bool {
-	if a.win == nil {
-		return false
-	}
-
-	done := make(chan bool, 1)
-	a.post(func() {
-		res, err := mygo.Dialog.Message(mygo.MessageOptions{
-			Type: mygo.MessageWarning,
-			Message: fmt.Sprintf(
-				"首次连接 %s\n\n主机密钥指纹：\n%s\n\n如果不是你预期的服务器，请取消。",
-				hk.Host, hk.Fingerprint,
-			),
-			Buttons: []string{"取消", "信任并连接"},
-		})
-		done <- err == nil && res.Button == 1
-	})
-
-	select {
-	case ok := <-done:
-		return ok
-	case <-a.ctx.Done():
-		return false
-	case <-time.After(2 * time.Minute):
-		return false
-	}
+	return a.askHostKey(hk)
 }
 
 func (a *App) saveKnownHost(hk *sshx.HostKeyError) {
@@ -589,6 +578,7 @@ func (a *App) editProfile(p store.Profile) {
 	a.status = ""
 	a.saveProfile = true
 	a.formOpen = true
+	a.managerOpen = false
 	a.pickerOpen = false
 	a.directConnect = false
 	a.batchOpen = false
@@ -600,12 +590,10 @@ func (a *App) connectSavedProfile(p store.Profile) {
 		a.status = "正在连接，请稍候"
 		return
 	}
-	for i, ts := range a.terms {
-		if !ts.local && !ts.exited && ts.profileID == p.ID {
-			a.activateTerm(i)
-			return
-		}
-	}
+	a.managerOpen = false
+	// A saved server opens a new tab every time: several shells on one host
+	// are useful (and FinalShell behaves this way), so an existing session
+	// never steals the click.
 	if a.editorOpen {
 		a.status = "请先保存或关闭编辑器"
 		return
@@ -624,8 +612,8 @@ func (a *App) connectSavedProfile(p store.Profile) {
 	a.saveProfile = true
 	a.connectErr = ""
 	a.status = ""
-	a.nav = navWorkspace
 	a.formOpen = false
+	a.managerOpen = false
 	a.pickerOpen = false
 	a.batchOpen = false
 	a.settingsOpen = false
@@ -634,6 +622,13 @@ func (a *App) connectSavedProfile(p store.Profile) {
 	a.forwardOpen = false
 	a.directConnect = true
 	a.connectingProfileID = p.ID
+	if tab := a.activeTabRef(); tab != nil && tab.kind == tabQuickConnect {
+		// The quick-connect page the user is looking at becomes the session
+		// tab once the handshake succeeds.
+		a.pendingQuickTab = tab.id
+	} else {
+		a.pendingQuickTab = 0
+	}
 	a.connect()
 }
 
@@ -690,10 +685,23 @@ func (a *App) deleteProfile() {
 	if a.profileID == 0 {
 		return
 	}
+	a.removeProfile(store.Profile{ID: a.profileID, Name: a.profileName})
+}
+
+// removeProfile deletes a saved connection from the store and the keychain.
+// It is shared by the connection form and the connection manager dialog.
+func (a *App) removeProfile(p store.Profile) {
+	if p.ID == 0 {
+		return
+	}
+	name := strings.TrimSpace(p.Name)
+	if name == "" {
+		name = fmt.Sprintf("%d", p.ID)
+	}
 
 	res, _ := mygo.Dialog.Message(mygo.MessageOptions{
 		Type:               mygo.MessageWarning,
-		Message:            "删除会话「" + a.profileName + "」？",
+		Message:            "删除连接「" + name + "」？",
 		Buttons:            []string{"取消", "删除"},
 		DestructiveButtons: []int{1},
 	})
@@ -702,16 +710,23 @@ func (a *App) deleteProfile() {
 	}
 
 	if a.store != nil {
-		if err := a.store.DeleteProfile(a.ctx, a.profileID); err != nil {
-			a.status = "删除失败: " + err.Error()
+		if err := a.store.DeleteProfile(a.ctx, p.ID); err != nil {
+			a.managerErr = "删除失败: " + err.Error()
+			a.status = a.managerErr
 			return
 		}
 	}
-	_ = vault.Delete(a.profileID, "password")
-	a.resetForm()
+	_ = vault.Delete(p.ID, "password")
+	if a.profileID == p.ID {
+		a.resetForm()
+		a.formOpen = false
+	}
+	if a.managerSel == p.ID {
+		a.managerSel = 0
+	}
 	a.refreshProfiles()
-	a.formOpen = false
-	a.status = "已删除连接"
+	a.managerErr = ""
+	a.status = "已删除连接 " + name
 }
 
 func (a *App) resetForm() {
@@ -737,22 +752,26 @@ func (a *App) refreshProfiles() {
 	a.profiles = profs
 }
 
+// closeTerm closes the tab of the i-th session. Tabs close at once, like the
+// tab bar of a browser: the terminal keeps running nothing once closed.
 func (a *App) closeTerm(i int) {
+	a.syncTabs()
 	if i < 0 || i >= len(a.terms) {
 		return
 	}
-	ts := a.terms[i]
-
-	res, _ := mygo.Dialog.Message(mygo.MessageOptions{
-		Type:               mygo.MessageWarning,
-		Message:            "关闭终端「" + ts.Title + "」？",
-		Buttons:            []string{"取消", "关闭"},
-		DestructiveButtons: []int{1},
-	})
-	if res.Button != 1 {
+	if idx := a.termTabIndex(a.terms[i]); idx >= 0 {
+		a.closeTabIndex(idx)
 		return
 	}
+	a.closeTermSession(a.terms[i])
+}
 
+// closeTermSession releases everything a session owns and drops it from
+// a.terms. Callers keep the tab strip in step (closeTabIndex does).
+func (a *App) closeTermSession(ts *termSession) {
+	if ts == nil {
+		return
+	}
 	if a.editor != nil && a.editor.termID == ts.ID {
 		a.discardEditor()
 	}
@@ -762,7 +781,7 @@ func (a *App) closeTerm(i int) {
 		b.Close()
 		delete(a.browsers, ts.ID)
 	}
-	if i == a.activeTerm {
+	if ts == a.activeTerminal() {
 		a.filesOpen = false
 		a.monitorOpen = false
 		a.forwardOpen = false
@@ -770,14 +789,15 @@ func (a *App) closeTerm(i int) {
 		a.resetFind()
 	}
 
+	idx := a.termIndex(ts)
 	ts.Close()
-	a.terms = append(a.terms[:i], a.terms[i+1:]...)
-	if a.activeTerm >= len(a.terms) {
-		a.activeTerm = len(a.terms) - 1
+	if idx >= 0 {
+		a.terms = append(a.terms[:idx], a.terms[idx+1:]...)
 	}
 	if len(a.terms) == 0 {
-		a.formOpen = false
-		a.status = "会话已关闭，可从左侧栏重新打开"
+		a.activeTerm = -1
+		a.activeTab = 0
+		a.status = "没有打开的会话，点 + 快速连接"
 	}
 }
 
@@ -789,6 +809,15 @@ func (a *App) Menu() *mygo.Menu {
 			}},
 			{Label: "本地终端", Accelerator: "CmdOrCtrl+T", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 				win.Update(func() { a.OpenLocalTerminal() })
+			}},
+			{Label: "新建标签页", Accelerator: "CmdOrCtrl+Alt+T", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+				win.Update(func() {
+					a.openQuickTab()
+					a.status = "从快速连接中选择服务器"
+				})
+			}},
+			{Label: "连接管理器", Accelerator: "CmdOrCtrl+Alt+C", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+				win.Update(func() { a.openConnectionManager() })
 			}},
 			mygo.Separator(),
 			{Label: "文件面板", Accelerator: "CmdOrCtrl+Shift+O", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
@@ -817,7 +846,7 @@ func (a *App) Menu() *mygo.Menu {
 				win.Update(func() { a.openSettings() })
 			}},
 			{Label: "切换服务器监控", Accelerator: "CmdOrCtrl+B", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
-				win.Update(func() { a.sidebarVisible = !a.sidebarVisible })
+				win.Update(func() { a.toggleMonitor() })
 			}},
 			{Label: "服务器监控", Accelerator: "CmdOrCtrl+Shift+M", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 				win.Update(func() { a.openMonitor() })

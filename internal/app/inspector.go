@@ -13,57 +13,114 @@ import (
 )
 
 func (a *App) shellInspector(c *ui.Context, t *ui.Theme) {
-	ui.Column(c).Width(296).FillHeight().Background(colPanelTop).
-		BorderWidth(0, 1, 0, 0).BorderColor(colLine).Children(func() {
+	ui.Column(c).Width(monitorWidth(c)).FillHeight().Background(colPanelTop).
+		BorderWidth(0, 0, 0, 1).BorderColor(colLine).Children(func() {
 		a.inspectorMonitorHead(c, t)
 		a.inspectorContent(c, t)
 	})
 }
 
+// toggleMonitor collapses or expands the left-hand server monitor.
+func (a *App) toggleMonitor() {
+	a.monitorCollapsed = !a.monitorCollapsed
+	if a.monitorCollapsed {
+		a.status = "服务器监控已收起"
+	} else {
+		a.status = "服务器监控已展开"
+	}
+	if !a.monitorCollapsed {
+		if ts := a.activeTerminal(); ts != nil && !ts.local {
+			a.startMonitorFor(ts, false)
+		}
+	}
+}
+
 func (a *App) inspectorMonitorHead(c *ui.Context, t *ui.Theme) {
 	ts := a.activeTerminal()
 	live := false
-	if ts != nil && !ts.local {
-		if ms := a.monitors[ts.ID]; ms != nil && len(ms.samples) > 0 {
-			live = true
+	sub := "未连接"
+	host := ""
+	if ts != nil {
+		if ts.local {
+			sub = "本机 · 本地终端"
+		} else {
+			sub = ts.profile.Host
+			host = ts.profile.Host
+			if ms := a.monitors[ts.ID]; ms != nil && len(ms.samples) > 0 {
+				live = true
+			}
 		}
 	}
-	ui.Row(c).Height(44).Shrink(0).Padding(0, 9, 0, 12).Gap(7).AlignItems(ui.Center).
+
+	ui.Column(c).Shrink(0).Padding(6, 9, 7, 12).Gap(3).
 		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
-		iconEl(c, iconActivity, 13, colMuted)
-		ui.Text(c, "服务器监控").FontSize(11).FontWeight(650).LetterSpacing(0.2).
-			TextColor(colText).NoWrap()
-		if live {
-			ui.Box(c).Height(16).Padding(0, 5).Radius(8).Background(colGreen.Alpha(0.11)).
-				Center().Children(func() {
-				ui.Row(c).Gap(3).AlignItems(ui.Center).Children(func() {
-					statusDot(c, colGreen, 4)
-					ui.Text(c, "LIVE").FontSize(7.5).Font("Cascadia Code").LetterSpacing(0.6).
-						TextColor(colGreen)
+		ui.Row(c).Height(26).Gap(7).AlignItems(ui.Center).Children(func() {
+			iconEl(c, iconActivity, 13, colMuted)
+			ui.Text(c, "服务器监控").FontSize(11).FontWeight(650).LetterSpacing(0.2).
+				TextColor(colText).NoWrap()
+			if live {
+				ui.Box(c).Height(16).Padding(0, 5).Radius(8).Background(colGreen.Alpha(0.11)).
+					Center().Children(func() {
+					ui.Row(c).Gap(3).AlignItems(ui.Center).Children(func() {
+						statusDot(c, colGreen, 4)
+						ui.Text(c, "LIVE").FontSize(7.5).Font("Cascadia Code").LetterSpacing(0.6).
+							TextColor(colGreen)
+					})
 				})
+			}
+			ui.Text(c, "").Grow(1)
+			collapse := ui.ButtonBase(c.Key("inspector-collapse")).Size(24, 24).Radius(6).Center().
+				Tooltip("收起监控（Ctrl B）").Label("收起监控")
+			if collapse.Hovered() {
+				collapse.Background(colPanel2)
+			}
+			collapse.Children(func() {
+				iconEl(c, iconChevronLeft, 13, colMuted)
 			})
-		}
-		ui.Text(c, "").Grow(1)
-		collapse := ui.ButtonBase(c.Key("inspector-collapse")).Size(24, 24).Radius(6).Center().
-			Tooltip("收起监控（Ctrl B）").Label("收起监控（Ctrl B）")
-		if collapse.Hovered() {
-			collapse.Background(colPanel2)
-		}
-		collapse.Children(func() {
-			iconEl(c, iconChevronRight, 13, colMuted)
+			if collapse.Clicked() {
+				a.toggleMonitor()
+			}
 		})
-		if collapse.Clicked() {
-			a.sidebarVisible = false
-		}
+
+		ui.Row(c).Height(24).Gap(6).AlignItems(ui.Center).Children(func() {
+			if host != "" {
+				// The server's address stays visible even when no metrics
+				// arrive yet, and one click copies it.
+				copyBtn := ui.ButtonBase(c.Key("inspector-copy-ip")).
+					Height(23).Padding(0, 6).Radius(5).Gap(5).AlignItems(ui.Center)
+				copyBtn.Background(colPanel2.Alpha(0.6)).Border(1, colLine)
+				if copyBtn.Hovered() {
+					copyBtn.Background(colAccentSoft)
+					copyBtn.BorderColor(colAccentLine)
+				}
+				copyBtn.Tooltip("复制 IP 地址").Label("复制 IP 地址 " + host)
+				copyBtn.Children(func() {
+					ui.Text(c, "IP").FontSize(8).FontWeight(650).LetterSpacing(0.4).
+						TextColor(colMuted2).NoWrap()
+					ui.Text(c, host).FontSize(10).Font("Cascadia Code").
+						TextColor(colText2).NoWrap()
+					iconEl(c, iconCopy, 11, condColor(copyBtn.Hovered(), colCyan, colMuted2))
+				})
+				if copyBtn.Clicked() {
+					c.WriteClipboard(host)
+					a.status = "已复制 IP：" + host
+					c.Toast("已复制 IP · " + host)
+				}
+				ui.Text(c, "").Grow(1)
+				return
+			}
+			ui.Text(c, sub).FontSize(9.2).Font("Cascadia Code").
+				TextColor(colMuted2).NoWrap()
+		})
 	})
 }
 
 func (a *App) inspectorRail(c *ui.Context, t *ui.Theme) {
-	ui.Column(c).Width(42).FillHeight().Background(colPanel).
-		BorderWidth(0, 1, 0, 0).BorderColor(colLine).Padding(8, 5).Gap(2).
+	ui.Column(c).Width(44).FillHeight().Background(colPanelTop).
+		BorderWidth(0, 0, 0, 1).BorderColor(colLine).Padding(8, 5).Gap(2).
 		AlignItems(ui.Center).Children(func() {
 		expand := ui.ButtonBase(c.Key("inspector-expand")).Size(28, 28).Radius(7).Center().
-			Tooltip("展开监控（Ctrl B）")
+			Tooltip("展开监控（Ctrl B）").Label("展开监控")
 		if expand.Hovered() {
 			expand.Background(t.SurfaceHover)
 		}
@@ -71,7 +128,7 @@ func (a *App) inspectorRail(c *ui.Context, t *ui.Theme) {
 			iconEl(c, iconChevronRight, 14, colMuted)
 		})
 		if expand.Clicked() {
-			a.sidebarVisible = true
+			a.toggleMonitor()
 		}
 		ui.Box(c).Height(4).Shrink(0)
 		for _, r := range "服务器监控" {
@@ -85,10 +142,16 @@ func (a *App) inspectorRail(c *ui.Context, t *ui.Theme) {
 func (a *App) inspectorContent(c *ui.Context, t *ui.Theme) {
 	ts := a.activeTerminal()
 	if ts == nil {
+		title := "未连接"
+		sub := "点顶部 + 新建标签页，从快速连接里选择服务器"
+		if a.quickTabActive() {
+			title = "快速连接"
+			sub = "点击连接卡片打开终端；连上后会在这里显示实时监控"
+		}
 		ui.Column(c).Grow(1).Fill().Center().Gap(8).Padding(20).Children(func() {
 			iconEl(c, iconActivity, 24, colMuted2)
-			ui.Text(c, "未连接").FontSize(fsBody).FontWeight(600)
-			ui.Text(c, "从左侧连接树打开一个会话").FontSize(10).TextColor(colMuted2).TextAlign(ui.Center)
+			ui.Text(c, title).FontSize(fsBody).FontWeight(600)
+			ui.Text(c, sub).FontSize(10).TextColor(colMuted2).TextAlign(ui.Center)
 		})
 		return
 	}
@@ -316,7 +379,7 @@ func (a *App) inspectorServer(c *ui.Context, t *ui.Theme) {
 			})
 			ui.Text(c, "未连接").FontSize(fsBody).FontWeight(600)
 			ui.Text(c, "点击顶部「新建连接」或使用标签栏「+」选择会话").FontSize(10.5).TextColor(colMuted)
-			ui.Text(c, "从左侧栏打开已保存连接").FontSize(9.5).TextColor(colMuted2)
+			ui.Text(c, "点顶部 + 从快速连接打开已保存的服务器").FontSize(9.5).TextColor(colMuted2)
 		})
 		return
 	}
@@ -343,7 +406,7 @@ func (a *App) inspectorServer(c *ui.Context, t *ui.Theme) {
 					})
 					inspectorCard(c, t, func() {
 						inspectorCardHead(c, t, "提示", "")
-						ui.Text(c, "点击顶部的「新建连接」接入服务器，左侧会显示实时 CPU、内存、网络、进程和磁盘。").
+						ui.Text(c, "点击顶部的「新建连接」接入服务器，左侧栏会显示实时 CPU、内存、网络、进程和磁盘。").
 							FontSize(10.5).TextColor(colMuted).LineHeight(1.55)
 					})
 					inspectorCard(c, t, func() {

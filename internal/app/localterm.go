@@ -94,13 +94,27 @@ func (a *App) OpenLocalTerminal() {
 	}
 
 	for i := len(a.terms) - 1; i >= 0; i-- {
-		if a.terms[i].local {
-			a.terms[i].Close()
-			a.terms = append(a.terms[:i], a.terms[i+1:]...)
+		ts := a.terms[i]
+		if !ts.local {
+			continue
 		}
+		if idx := a.termTabIndex(ts); idx >= 0 {
+			a.tabs = append(a.tabs[:idx], a.tabs[idx+1:]...)
+			if a.activeTab > idx {
+				a.activeTab--
+			}
+		}
+		ts.Close()
+		a.terms = append(a.terms[:i], a.terms[i+1:]...)
 	}
-	if a.activeTerm >= len(a.terms) {
-		a.activeTerm = len(a.terms) - 1
+	if a.activeTab >= len(a.tabs) {
+		a.activeTab = len(a.tabs) - 1
+	}
+	if a.activeTab < 0 {
+		a.activeTab = 0
+	}
+	if a.activeTab >= len(a.tabs) {
+		a.activeTerm = -1
 	}
 
 	ts, err := newLocalTerminal(a.post, a.onTermSearch, a.termDisplay())
@@ -114,8 +128,7 @@ func (a *App) OpenLocalTerminal() {
 	}
 
 	a.terms = append(a.terms, ts)
-	a.activeTerm = len(a.terms) - 1
-	a.nav = navWorkspace
+	a.openTermTab(ts)
 	a.formOpen = false
 	a.batchOpen = false
 	a.settingsOpen = false

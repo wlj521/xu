@@ -164,3 +164,45 @@ func fieldColumn(c *ui.Context, label string, build func()) ui.Element {
 func hairline(c *ui.Context) {
 	ui.Box(c).Height(1).FillWidth().Background(colLine)
 }
+
+// monitorWidth is the left-hand server monitor's width: narrower windows (the
+// app runs at 200% DPI on small screens) give the workspace more room.
+func monitorWidth(c *ui.Context) float32 {
+	w, _ := c.Size()
+	if w < 1000 {
+		return 272
+	}
+	return 300
+}
+
+// fitDialog clamps a dialog size to the window, keeping a margin around it.
+func fitDialog(c *ui.Context, w, h float32) (float32, float32) {
+	cw, ch := c.Size()
+	if maxW := cw - 40; w > maxW {
+		w = maxW
+	}
+	if maxH := ch - 40; h > maxH {
+		h = maxH
+	}
+	if w < 320 {
+		w = 320
+	}
+	if h < 240 {
+		h = 240
+	}
+	return w, h
+}
+
+// fitDialogWidth clamps only the width of a dialog whose height follows its
+// content.
+func fitDialogWidth(c *ui.Context, w float32) float32 {
+	cw, _ := c.Size()
+	if maxW := cw - 40; w > maxW {
+		w = maxW
+	}
+	if w < 320 {
+		w = 320
+	}
+	return w
+}
+

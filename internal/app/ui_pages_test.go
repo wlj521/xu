@@ -144,25 +144,25 @@ func TestFileTreeShowsServerPaths(t *testing.T) {
 	}
 }
 
-func TestSidebarCollapseButton(t *testing.T) {
+func TestMonitorCollapseButton(t *testing.T) {
 	a := New()
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
-	if err := tt.Click("收起左侧连接栏"); err != nil {
+	if err := tt.Click("收起监控"); err != nil {
 		t.Fatalf("collapse: %v", err)
 	}
 	tt.Frame()
-	if !a.sidebarCollapsed {
-		t.Fatal("sidebar did not collapse")
+	if !a.monitorCollapsed {
+		t.Fatal("monitor did not collapse")
 	}
-	if tt.HasText("本机") {
-		t.Fatal("collapsed sidebar still shows its content")
+	if tt.HasText("收起监控") {
+		t.Fatal("collapsed monitor should show its rail, not its header")
 	}
-	if err := tt.Click("展开左侧连接栏"); err != nil {
+	if err := tt.Click("展开监控"); err != nil {
 		t.Fatalf("expand: %v", err)
 	}
 	tt.Frame()
-	if a.sidebarCollapsed {
-		t.Fatal("sidebar did not expand")
+	if a.monitorCollapsed {
+		t.Fatal("monitor did not expand")
 	}
 }

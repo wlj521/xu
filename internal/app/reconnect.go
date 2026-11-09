@@ -74,6 +74,10 @@ func (a *App) reconnect(ts *termSession) {
 			}
 
 			a.terms[idx] = newTS
+			if ti := a.termTabIndex(ts); ti >= 0 {
+				a.tabs[ti].term = newTS
+				a.activeTab = ti
+			}
 			a.activeTerm = idx
 
 			a.finding = false

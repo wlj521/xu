@@ -83,9 +83,14 @@ func newFileBrowser(termID int64, client *sftp.Client, localDir, remoteHome stri
 	if err := b.setLocalDir(localDir); err != nil {
 		b.localErr = err.Error()
 	}
+	// The remote pane always starts somewhere explicit, so a browser can be
+	// inspected (and its breadcrumb rendered) before its first listing.
+	if remoteHome == "" {
+		remoteHome = "/"
+	}
+	b.remoteDir = remoteHome
+	b.remotePathInput = remoteHome
 	if client != nil {
-		b.remoteDir = remoteHome
-		b.remotePathInput = remoteHome
 		b.loadRemote()
 		b.loadTreeDir("/")
 		b.revealTreePath(remoteHome)
@@ -159,104 +164,13 @@ func (a *App) ensureFileBrowser(ts *termSession) (*fileBrowser, error) {
 	if err != nil || localDir == "" {
 		localDir = "."
 	}
-	remoteHome, err := sc.Getwd()
-	if err != nil || remoteHome == "" {
-		remoteHome = "/"
-	}
+	// The far pane starts at the filesystem root, not the login home: the
+	// dock shows the server's whole tree, not only /root.
+	remoteHome := "/"
 
 	b := newFileBrowser(ts.ID, sc, localDir, remoteHome)
 	a.browsers[ts.ID] = b
 	return b, nil
-}
-
-func (a *App) filesView(c *ui.Context, t *ui.Theme) {
-	ts := a.activeTerminal()
-	if ts == nil {
-		a.filesEmptyPage(c, t, "请先打开一个会话", "连接一台服务器后即可管理远端文件")
-		return
-	}
-	if ts.local {
-		a.filesEmptyPage(c, t, "本地终端不支持 SFTP", "切换到 SSH 会话后再打开文件管理")
-		return
-	}
-	b := a.browsers[ts.ID]
-	if b == nil {
-		if _, err := a.ensureFileBrowser(ts); err != nil {
-			a.filesEmptyPage(c, t, "打开 SFTP 失败", err.Error())
-			return
-		}
-		b = a.browsers[ts.ID]
-	}
-	if b == nil {
-		a.filesEmptyPage(c, t, "文件浏览器不可用", "请先连接一台 SSH 服务器")
-		return
-	}
-
-	ui.Column(c).Grow(1).Fill().Padding(20, 24, 16, 24).Gap(12).Children(func() {
-		a.filesPageHeader(c, t, b, ts)
-
-		if a.promptOpen {
-			a.promptBar(c)
-		}
-		if a.fileErr != "" {
-			ui.Box(c).FillWidth().Padding(8, 11).Radius(5).
-				Background(colRed.Alpha(0.07)).Border(1, colRed.Alpha(0.18)).Children(func() {
-				ui.Text(c, a.fileErr).FontSize(10).TextColor(colRed)
-			})
-		}
-
-		ui.Row(c).Grow(1).Gap(12).AlignItems(ui.Stretch).Children(func() {
-			a.localPane(c, b, t)
-			a.remotePane(c, b, t)
-		})
-
-		if a.transfer != nil {
-			a.transferTray(c, t)
-		}
-	})
-}
-
-func (a *App) filesPageHeader(c *ui.Context, t *ui.Theme, b *fileBrowser, ts *termSession) {
-	pageHeader(c, t, iconFolder, "文件管理",
-		fmt.Sprintf("SFTP · %s · %s", ts.Title, shortLabel(b.remoteDir, 46)),
-		func() {
-			if ghostAction(c, t, "files-terminal", "终端", iconTerm).Clicked() {
-				a.goNav(navWorkspace)
-			}
-			if ghostAction(c, t, "files-refresh", "刷新", iconRefresh).Clicked() {
-				b.loadLocal()
-				b.loadRemote()
-				a.fileErr = ""
-			}
-			if ghostAction(c, t, "files-download", "下载", iconDownload).Clicked() {
-				a.downloadSelected(b)
-			}
-			if primaryAction(c, "files-upload", "上传", iconUpload).Clicked() {
-				a.uploadSelected(b)
-			}
-		})
-}
-
-func (a *App) filesEmptyPage(c *ui.Context, t *ui.Theme, title, sub string) {
-	ui.Column(c).Grow(1).Fill().Padding(24, 28).Gap(16).Children(func() {
-		pageHeader(c, t, iconFolder, "文件管理", "本地与远端 SFTP 文件", nil)
-		ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
-			ui.Box(c).Size(58, 58).Radius(10).
-				Background(colPanel2).Border(1, colLine).Center().Children(func() {
-				iconEl(c, iconFolder, 24, colMuted2)
-			})
-			ui.Text(c, title).FontSize(fsTitle).FontWeight(600).TextColor(colText)
-			ui.Text(c, sub).FontSize(10.5).TextColor(colMuted).TextAlign(ui.Center)
-			ui.Row(c).Gap(8).Margin(4, 0, 0, 0).Children(func() {
-				if primaryAction(c, "files-empty-connect", "打开连接", iconConnections).Clicked() {
-					a.openConnectionManager()
-				}
-				if ghostAction(c, t, "files-empty-terminal", "返回终端", iconTerm).Clicked() {
-					a.goNav(navWorkspace)
-				}
-			})
-		})
-	})
 }
 
 func (a *App) promptBar(c *ui.Context) {
@@ -354,84 +268,6 @@ func (a *App) localPane(c *ui.Context, b *fileBrowser, t *ui.Theme) {
 		})
 
 		a.filePaneFoot(c, fmt.Sprintf("%d 项", len(b.localEntries)), "本机")
-	})
-}
-
-func (a *App) remotePane(c *ui.Context, b *fileBrowser, t *ui.Theme) {
-	zone := ui.Column(c).Grow(1).FillHeight().Background(colPanel2).
-		Border(1, colLine).Radius(10)
-	if zone.FileDragOver() {
-		zone.Border(2, colCyan)
-	}
-	if files := zone.DroppedFiles(); files != nil {
-		a.uploadDropped(b, files)
-	}
-
-	zone.Children(func() {
-		a.filePaneHead(c, t, "远端", "SFTP", iconServer, colCyan, func() {
-			if paneIconButton(c, t, "remote-refresh", iconRefresh, "刷新").Clicked() {
-				b.loadRemote()
-			}
-			if paneIconButton(c, t, "remote-up", iconArrowUp, "上一级").Clicked() {
-				a.navigateRemote(b, path.Dir(b.remoteDir))
-			}
-			if paneIconButton(c, t, "remote-upload", iconUpload, "上传文件").Clicked() {
-				a.uploadViaDialog(b)
-			}
-			if paneIconButton(c, t, "remote-download", iconDownload, "下载所选").Clicked() {
-				a.downloadSelected(b)
-			}
-			more := paneIconButton(c, t, "remote-more", iconMore, "更多")
-			more.Menu(func(m *ui.Menu) {
-				if m.Item("新建文件").Chosen() {
-					a.promptNewFile(b, true)
-				}
-				if m.Item("新建文件夹").Chosen() {
-					a.promptMkdir(b, true)
-				}
-				if m.Item("编辑所选").Chosen() {
-					a.openSelectedRemoteForEdit(b)
-				}
-				m.Separator()
-				if m.Item("重命名").Chosen() {
-					a.promptRename(b, true)
-				}
-				if m.Item("删除").Chosen() {
-					a.deleteSelected(b, true)
-				}
-			})
-		})
-
-		a.remotePathBar(c, t, b)
-
-		if b.remoteErr != "" {
-			ui.Text(c, shortLabel(b.remoteErr, 90)).FontSize(9).TextColor(colRed).Padding(2, 10)
-		}
-
-		tableTheme := *t
-		tableTheme.FontSize = 9
-		tableTheme.TextMuted = colMuted2
-		tableTheme.Accent = colAccentSoft
-		tableTheme.AccentText = colText
-		tableTheme.Focus = colAccentLine
-		b.remoteState.CellMenu = func(m *ui.Menu, row, col int) {
-			if row >= 0 && row < len(b.remoteEntries) {
-				b.remoteSel = row
-			}
-			a.fileContextMenu(m, b, true)
-		}
-		ui.Themed(c, &tableTheme).Grow(1).Background(ui.Transparent).
-			ContextMenu(func(m *ui.Menu) { a.fileBackgroundMenu(m, b, true) }).Children(func() {
-			if ui.Table(c, &b.remoteState, bottomFileColumns(), len(b.remoteEntries), func(row, col int) {
-				if row >= 0 && row < len(b.remoteEntries) {
-					compactFileCell(c, b.remoteEntries[row], col)
-				}
-			}).Grow(1).Submitted() {
-				a.openRemoteSelected(b)
-			}
-		})
-
-		a.filePaneFoot(c, fmt.Sprintf("%d 项", len(b.remoteEntries)), "SFTP")
 	})
 }
 
@@ -557,30 +393,6 @@ func (a *App) localPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			a.navigateLocal(b, b.localPathInput)
 		}
 		ui.Text(c, fmt.Sprintf("%d 项", len(b.localEntries))).FontSize(8.5).
-			Font("Cascadia Code").TextColor(colMuted2).NoWrap()
-	})
-}
-
-func (a *App) remotePathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	ui.Row(c).Height(27).Shrink(0).Padding(0, 8).Gap(3).AlignItems(ui.Center).
-		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
-		up := ui.ButtonBase(c.Key("fp-remote-up")).Size(21, 21).Center().Radius(4).
-			Tooltip("上级目录").Disabled(b.remoteDir == "/")
-		if up.Hovered() && b.remoteDir != "/" {
-			up.Background(t.SurfaceHover)
-		}
-		up.Children(func() { iconEl(c, iconArrowUp, 11, condColor(b.remoteDir == "/", colMuted2, colMuted)) })
-		if up.Clicked() && b.remoteDir != "/" {
-			a.navigateRemote(b, path.Dir(b.remoteDir))
-		}
-
-		input := ui.TextInput(c, &b.remotePathInput).Grow(1).Height(21).
-			Font("Cascadia Code").FontSize(9.8).Placeholder("输入远端路径，回车跳转").
-			Background(ui.Transparent).Border(0, ui.Transparent)
-		if input.Submitted() {
-			a.navigateRemote(b, b.remotePathInput)
-		}
-		ui.Text(c, fmt.Sprintf("%d 项", len(b.remoteEntries))).FontSize(8.5).
 			Font("Cascadia Code").TextColor(colMuted2).NoWrap()
 	})
 }
@@ -790,13 +602,6 @@ func fileCell(c *ui.Context, f os.FileInfo, owner string, col int) {
 	}
 }
 
-func localCell(c *ui.Context, b *fileBrowser, row, col int) {
-	if row < 0 || row >= len(b.localEntries) {
-		return
-	}
-	fileCell(c, b.localEntries[row], "—", col)
-}
-
 func remoteCell(c *ui.Context, b *fileBrowser, row, col int) {
 	if row < 0 || row >= len(b.remoteEntries) {
 		return
@@ -836,6 +641,10 @@ func (b *fileBrowser) setLocalDir(dir string) error {
 }
 
 func (a *App) navigateRemote(b *fileBrowser, dir string) {
+	if b.client == nil {
+		b.remoteErr = "SFTP 不可用"
+		return
+	}
 	dir = b.expandRemote(dir)
 	info, err := b.client.Stat(dir)
 	if err != nil {
@@ -965,6 +774,10 @@ func (a *App) openLocalSelected(b *fileBrowser) {
 }
 
 func (a *App) openRemoteSelected(b *fileBrowser) {
+	if b.client == nil {
+		b.remoteErr = "SFTP 不可用"
+		return
+	}
 	f := selectedEntry(b.remoteEntries, b.remoteSel)
 	if f == nil {
 		return

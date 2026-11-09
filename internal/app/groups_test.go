@@ -34,24 +34,25 @@ func TestGroupLookupHelpers(t *testing.T) {
 	}
 }
 
-func TestSidebarRendersUserGroupsAndNoSidebarSearch(t *testing.T) {
+func TestQuickConnectRendersUserGroups(t *testing.T) {
 	a := New()
 	a.groups = []store.Group{{ID: 1, Name: "生产环境"}}
 	a.profiles = []store.Profile{
 		{ID: 1, Name: "alpha", Host: "example.com", Port: 22, Username: "root", GroupID: 1},
 		{ID: 2, Name: "beta", Host: "example.org", Port: 22, Username: "root"},
 	}
+	a.openQuickTab()
 
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
 
-	for _, want := range []string{"生产环境", "alpha", "未分组", "beta", "本地终端"} {
+	for _, want := range []string{"快速连接", "生产环境", "alpha", "未分组", "beta", "本机终端"} {
 		if !tt.HasText(want) {
-			t.Fatalf("sidebar missing %q; texts = %q", want, tt.Texts())
+			t.Fatalf("quick connect missing %q; texts = %q", want, tt.Texts())
 		}
 	}
 	if tt.HasText("搜索主机或用户") {
-		t.Fatalf("sidebar search must be removed; texts = %q", tt.Texts())
+		t.Fatalf("sidebar search must be gone; texts = %q", tt.Texts())
 	}
 }
 

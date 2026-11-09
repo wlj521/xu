@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,117 @@ import (
 	"xu/internal/sshx"
 )
 
+func TestDockFilePanelHasNoLocalPane(t *testing.T) {
+	a := New()
+	a.stop()
+	a.terms = []*termSession{{
+		ID: 1, Title: "root@test",
+		profile: sshx.Profile{Host: "test", Port: 22, Username: "root"},
+	}}
+	a.syncTabs()
+	a.bottomFiles = true
+
+	b := newFileBrowser(1, nil, t.TempDir(), "/")
+	b.remoteDir = "/"
+	b.remotePathInput = "/"
+	b.remoteEntries = []os.FileInfo{fakeInfo{name: "etc", dir: true}}
+	a.browsers[1] = b
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	if !tt.HasText("目录") {
+		t.Fatalf("remote tree pane missing; texts = %q", tt.Texts())
+	}
+	if !tt.HasText("etc") {
+		t.Fatalf("remote entries missing; texts = %q", tt.Texts())
+	}
+	if tt.HasText("本地") {
+		t.Fatalf("the local pane must be gone from SSH sessions; texts = %q", tt.Texts())
+	}
+}
+
+func TestDefaultRemoteDirIsRoot(t *testing.T) {
+	b := newFileBrowser(1, nil, t.TempDir(), "/")
+	if b.remoteDir != "/" || b.remotePathInput != "/" {
+		t.Fatalf("remote starts at %q / %q, want /", b.remoteDir, b.remotePathInput)
+	}
+}
+
+// clickText clicks the middle of the box showing s, which works for rows
+// whose cell content sits under a clickable wrapper.
+func clickText(tt *ui.Tester, s string) error {
+	box, ok := tt.Find(s)
+	if !ok {
+		return fmt.Errorf("no element shows %q", s)
+	}
+	tt.ClickAt(box.X+box.W/2, box.Y+box.H/2)
+	return nil
+}
+
+func newRemoteDockApp(t *testing.T) (*App, *fileBrowser, *ui.Tester) {
+	t.Helper()
+	a := New()
+	a.stop()
+	a.terms = []*termSession{{
+		ID: 1, Title: "root@test",
+		profile: sshx.Profile{Host: "test", Port: 22, Username: "root"},
+	}}
+	a.syncTabs()
+	a.bottomFiles = true
+
+	b := newFileBrowser(1, nil, t.TempDir(), "/")
+	b.remoteDir = "/"
+	b.remotePathInput = "/"
+	b.remoteEntries = []os.FileInfo{
+		fakeInfo{name: "etc", dir: true},
+		fakeInfo{name: "notes.txt", size: 3},
+	}
+	a.browsers[1] = b
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	return a, b, tt
+}
+
+func TestFileDockShowsTreeAndFullColumns(t *testing.T) {
+	_, _, tt := newRemoteDockApp(t)
+	for _, want := range []string{"目录", "类型", "权限", "用户/组", "Divider"} {
+		if !tt.HasText(want) {
+			t.Fatalf("file dock missing %q; texts = %q", want, tt.Texts())
+		}
+	}
+	if tt.HasText("本地") {
+		t.Fatalf("the local pane must be gone from SSH sessions; texts = %q", tt.Texts())
+	}
+}
+
+func TestSingleClickFolderOpensNextLevel(t *testing.T) {
+	_, b, tt := newRemoteDockApp(t)
+	if err := clickText(tt, "etc/"); err != nil {
+		t.Fatalf("click folder: %v", err)
+	}
+	if b.remoteSel != 0 {
+		t.Fatalf("folder row not chosen: sel=%d", b.remoteSel)
+	}
+	// A browser without SFTP cannot open the folder: the attempt proves the
+	// single click navigated instead of waiting for a double click.
+	if b.remoteErr != "SFTP 不可用" {
+		t.Fatalf("folder click did not try to open it: err=%q", b.remoteErr)
+	}
+}
+
+func TestSingleClickFileOnlyChoosesIt(t *testing.T) {
+	_, b, tt := newRemoteDockApp(t)
+	if err := clickText(tt, "notes.txt"); err != nil {
+		t.Fatalf("click file: %v", err)
+	}
+	if b.remoteSel != 1 {
+		t.Fatalf("file row not chosen: sel=%d", b.remoteSel)
+	}
+	if b.remoteErr != "" {
+		t.Fatalf("clicking a file must not navigate: err=%q", b.remoteErr)
+	}
+}
 func TestHumanSize(t *testing.T) {
 	cases := map[int64]string{
 		0:           "0 B",
@@ -113,9 +225,11 @@ func TestFileRowContextMenu(t *testing.T) {
 
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
-	if err := tt.RightClick("config.yaml"); err != nil {
-		t.Fatalf("right click: %v", err)
+	box, ok := tt.Find("config.yaml")
+	if !ok {
+		t.Fatalf("file row missing; texts = %q", tt.Texts())
 	}
+	tt.RightClickAt(box.X+box.W/2, box.Y+box.H/2)
 	menu := tt.Menu()
 	want := map[string]bool{"新建文件": false, "新建文件夹": false, "删除": false, "下载到本机": false}
 	for _, item := range menu {

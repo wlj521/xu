@@ -316,11 +316,29 @@ func (a *App) autoStartForwards(ts *termSession) {
 		if !r.AutoStart {
 			continue
 		}
+		// A second tab of the same server must not fight the first one for
+		// the same local (or remote) port.
+		if a.forwardListenInUse(r.Listen) {
+			continue
+		}
 		a.startForwardSpec(ts, r.Kind, r.Listen, r.Target, false)
 		if a.forwardErr != "" {
 			a.status = "自动启动转发失败: " + a.forwardErr
 		}
 	}
+}
+
+// forwardListenInUse reports whether any live session already listens on
+// addr, across all sessions and profiles.
+func (a *App) forwardListenInUse(listen string) bool {
+	for _, list := range a.forwards {
+		for _, e := range list {
+			if e.listen == listen {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a *App) stopForward(termID int64, i int) {

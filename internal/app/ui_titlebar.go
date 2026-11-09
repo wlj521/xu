@@ -23,7 +23,7 @@ func (a *App) titleBar(c *ui.Context, t *ui.Theme, bar ui.TitleBar) {
 }
 
 func (a *App) titleBrand(c *ui.Context, t *ui.Theme, h float32) {
-	ui.Row(c).Width(264).Height(h).Padding(0, 14).Gap(10).AlignItems(ui.Center).
+	ui.Row(c).Width(monitorWidth(c)).Height(h).Padding(0, 14).Gap(10).AlignItems(ui.Center).
 		BorderWidth(0, 1, 0, 0).BorderColor(colLine).DragWindow().Children(func() {
 		ui.Box(c).Width(27).Height(27).Radius(8).
 			Gradient(ui.Hex("#B2433A"), ui.Hex("#6E1A1D"), 135).
@@ -35,42 +35,12 @@ func (a *App) titleBrand(c *ui.Context, t *ui.Theme, h float32) {
 			ui.Text(c, "SSH 工作台").FontSize(7.5).FontWeight(650).
 				LetterSpacing(1.4).TextColor(colMuted2).NoWrap()
 		})
-		ui.Text(c, "").Grow(1)
-		toggleTip := "收起左侧连接栏（Ctrl Alt B）"
-		toggleLabel := "收起左侧连接栏"
-		if a.sidebarCollapsed {
-			toggleTip = "展开左侧连接栏（Ctrl Alt B）"
-			toggleLabel = "展开左侧连接栏"
-		}
-		collapse := ui.ButtonBase(c.Key("tb-collapse-sidebar")).Size(24, 24).Radius(6).Center().
-			Tooltip(toggleTip).Label(toggleLabel)
-		collapse.Background(colPanel2)
-		collapse.Border(1, colLine)
-		if collapse.Hovered() {
-			collapse.Background(colAccentSoft)
-			collapse.BorderColor(colAccentLine)
-		}
-		collapse.Children(func() {
-			chevron := iconChevronLeft
-			if a.sidebarCollapsed {
-				chevron = iconChevronRight
-			}
-			iconEl(c, chevron, 12, colMuted)
-		})
-		if collapse.Clicked() {
-			a.sidebarCollapsed = !a.sidebarCollapsed
-			if a.sidebarCollapsed {
-				a.status = "左侧连接栏已收起"
-			} else {
-				a.status = "左侧连接栏已展开"
-			}
-		}
 	})
 }
 
 func (a *App) titleChip(c *ui.Context, t *ui.Theme, h float32) {
-	ui.Box(c).Grow(1).Height(h).DragWindow().Center().Children(func() {
-		b := ui.ButtonBase(c.Key("title-search")).Width(420).Height(30).
+	ui.Row(c).Grow(1).Height(h).AlignItems(ui.Center).Padding(0, 16).DragWindow().Children(func() {
+		b := ui.ButtonBase(c.Key("title-search")).Grow(1).MaxWidth(420).Height(30).
 			Padding(0, 10).Radius(8).Gap(8).AlignItems(ui.Center)
 		b.Background(colPanel).Border(1, colLine)
 		if b.Hovered() {

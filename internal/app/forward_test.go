@@ -8,6 +8,20 @@ import (
 	"xu/internal/sshx"
 )
 
+func TestForwardListenDedupeAcrossSessions(t *testing.T) {
+	a := New()
+	if a.forwardListenInUse("127.0.0.1:8080") {
+		t.Fatal("no forward is running yet")
+	}
+	a.forwards[1] = []*forwardEntry{{kind: 0, listen: "127.0.0.1:8080", target: "10.0.0.5:3306"}}
+	if !a.forwardListenInUse("127.0.0.1:8080") {
+		t.Fatal("an active forward must reserve its listen address")
+	}
+	if a.forwardListenInUse("127.0.0.1:8081") {
+		t.Fatal("a different port must stay free")
+	}
+}
+
 func TestTunnelPanelRendersInDock(t *testing.T) {
 	a := New()
 	a.formOpen = false

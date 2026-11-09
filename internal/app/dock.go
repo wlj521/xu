@@ -17,18 +17,21 @@ const (
 )
 
 func (a *App) dockShell(c *ui.Context, t *ui.Theme) {
-	h := float32(39)
-	if a.bottomFiles {
-		h = 314
-	}
-	ui.Column(c).Height(h).Shrink(0).Background(colPanelTop).
+	ui.Column(c).Height(39).Shrink(0).Background(colPanelTop).
 		BorderWidth(1, 0, 0, 0).BorderColor(colLine2).Children(func() {
 		a.dockHead(c, t)
-		if a.bottomFiles {
-			ui.Column(c).Grow(1).FillHeight().Children(func() {
-				a.dockPanel(c, t)
-			})
-		}
+	})
+}
+
+// dockShellExpanded is the dock inside the draggable split above it: it fills
+// the room the split gives it instead of a fixed height.
+func (a *App) dockShellExpanded(c *ui.Context, t *ui.Theme) {
+	ui.Column(c).FillHeight().Background(colPanelTop).
+		BorderWidth(1, 0, 0, 0).BorderColor(colLine2).Children(func() {
+		a.dockHead(c, t)
+		ui.Column(c).Grow(1).FillHeight().Children(func() {
+			a.dockPanel(c, t)
+		})
 	})
 }
 
@@ -145,7 +148,7 @@ func (a *App) dockPanel(c *ui.Context, t *ui.Theme) {
 func (a *App) dockFilesPanel(c *ui.Context, t *ui.Theme) {
 	ts := a.activeTerminal()
 	if ts == nil {
-		a.dockNotice(c, "未连接", "打开一个会话后可以浏览本地与远端文件")
+		a.dockNotice(c, "未连接", "打开一个会话后可以浏览远端文件")
 		return
 	}
 	var b *fileBrowser
@@ -171,11 +174,9 @@ func (a *App) dockFilesPanel(c *ui.Context, t *ui.Theme) {
 			a.localPane(c, b, t)
 			return
 		}
-		ui.SplitPercent(c, &a.fileSplitPct, func() {
-			a.localPane(c, b, t)
-		}, func() {
-			a.remotePane(c, b, t)
-		}).Grow(1).FillHeight()
+		// SSH sessions show the FinalShell-style remote browser: directory
+		// tree, breadcrumb and the remote file table.
+		a.bottomFilesPane(c, t, b)
 	})
 }
 
@@ -207,7 +208,6 @@ func (a *App) setDockTab(tab dockTab) {
 	}
 	a.bottomFileTab = int(tab)
 	a.bottomFiles = true
-	a.nav = navWorkspace
 	a.formOpen = false
 	a.pickerOpen = false
 	a.settingsOpen = false
