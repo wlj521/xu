@@ -13,65 +13,72 @@ import (
 // left, the breadcrumb and actions on top of the remote file table on the
 // right. A single click on a folder row opens it.
 func (a *App) bottomFilesPane(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	ui.Row(c).FillHeight().AlignItems(ui.Stretch).Children(func() {
+	// The tree and the file table share the dock's width; the divider
+	// between them resizes the tree, and a double click restores its
+	// default width.
+	ui.Split(c, &a.fileSplit, func() {
 		a.bottomFileTree(c, t, b)
+	}, func() {
+		a.bottomFileContent(c, t, b)
+	}).Grow(1).FillWidth().SplitReset(210)
+}
 
-		ui.Column(c).FillHeight().Children(func() {
-			a.bottomPathBar(c, t, b)
+func (a *App) bottomFileContent(c *ui.Context, t *ui.Theme, b *fileBrowser) {
+	ui.Column(c).FillWidth().FillHeight().Children(func() {
+		a.bottomPathBar(c, t, b)
 
-			if a.promptOpen {
-				a.promptBar(c)
-			}
-			if a.transfer != nil {
-				a.transferBar(c, t)
-			}
-			if a.fileErr != "" {
-				ui.Text(c, shortLabel(a.fileErr, 100)).FontSize(9).TextColor(colRed).Padding(2, 12)
-			}
-			if b.remoteErr != "" {
-				ui.Text(c, shortLabel(b.remoteErr, 100)).FontSize(9).TextColor(colRed).Padding(2, 12)
-			}
+		if a.promptOpen {
+			a.promptBar(c)
+		}
+		if a.transfer != nil {
+			a.transferBar(c, t)
+		}
+		if a.fileErr != "" {
+			ui.Text(c, shortLabel(a.fileErr, 100)).FontSize(9).TextColor(colRed).Padding(2, 12)
+		}
+		if b.remoteErr != "" {
+			ui.Text(c, shortLabel(b.remoteErr, 100)).FontSize(9).TextColor(colRed).Padding(2, 12)
+		}
 
-			wide := a.dockFileTableWide(c)
-			cols := bottomFileColumns()
-			if wide {
-				cols = fileColumns()
+		wide := a.dockFileTableWide(c)
+		cols := bottomFileColumns()
+		if wide {
+			cols = fileColumns()
+		}
+		opened := false
+		table := ui.Table(c, &b.remoteState, cols, len(b.remoteEntries), func(row, col int) {
+			if row < 0 || row >= len(b.remoteEntries) {
+				return
 			}
-			opened := false
-			table := ui.Table(c, &b.remoteState, cols, len(b.remoteEntries), func(row, col int) {
-				if row < 0 || row >= len(b.remoteEntries) {
-					return
-				}
-				f := b.remoteEntries[row]
-				cell := ui.Box(c).Fill().OnClick(func() {
-					a.clickRemoteRow(b, row)
-				})
-				cell.ContextMenu(func(m *ui.Menu) {
-					b.remoteSel = row
-					a.fileContextMenu(m, b, true)
-				})
-				if !f.IsDir() && cell.DoubleClicked() {
-					b.remoteSel = row
-					a.openRemoteSelected(b)
-					opened = true
-				}
-				cell.Children(func() {
-					if wide {
-						remoteCell(c, b, row, col)
-					} else {
-						bottomRemoteCell(c, b, row, col)
-					}
-				})
-			}).Grow(1)
-			table.ContextMenu(func(m *ui.Menu) {
-				a.fileBackgroundMenu(m, b, true)
+			f := b.remoteEntries[row]
+			cell := ui.Box(c).Fill().OnClick(func() {
+				a.clickRemoteRow(b, row)
 			})
-			// Double clicks are also Submitted; the cell already opened the
-			// file, so only the keyboard's Enter opens it here.
-			if table.Submitted() && !opened && !a.editorOpen {
+			cell.ContextMenu(func(m *ui.Menu) {
+				b.remoteSel = row
+				a.fileContextMenu(m, b, true)
+			})
+			if !f.IsDir() && cell.DoubleClicked() {
+				b.remoteSel = row
 				a.openRemoteSelected(b)
+				opened = true
 			}
+			cell.Children(func() {
+				if wide {
+					remoteCell(c, b, row, col)
+				} else {
+					bottomRemoteCell(c, b, row, col)
+				}
+			})
+		}).Grow(1)
+		table.ContextMenu(func(m *ui.Menu) {
+			a.fileBackgroundMenu(m, b, true)
 		})
+		// Double clicks are also Submitted; the cell already opened the
+		// file, so only the keyboard's Enter opens it here.
+		if table.Submitted() && !opened && !a.editorOpen {
+			a.openRemoteSelected(b)
+		}
 	})
 }
 
@@ -94,6 +101,7 @@ func (a *App) clickRemoteRow(b *fileBrowser, row int) {
 }
 
 func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
+	b.syncRemotePathEdit(c)
 	ui.Row(c).Height(32).Shrink(0).Padding(0, 8).Gap(2).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Background(colPanel).Children(func() {
 		up := ui.ButtonBase(c.Key("bf-path-up")).Size(22, 22).Center().Radius(4).
@@ -108,25 +116,32 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			a.navigateRemote(b, path.Dir(b.remoteDir))
 		}
 
-		// The crumbs scroll sideways when a deep path outgrows the bar, so
-		// the actions on the right keep their room.
-		ui.ScrollHorizontal(c).Grow(1).Height(32).Children(func() {
-			ui.Row(c).Height(32).Gap(2).AlignItems(ui.Center).Children(func() {
-				a.pathCrumb(c, t, b, "/", "/", b.remoteDir == "/")
-				if b.remoteDir != "/" {
-					acc := "/"
-					segs := strings.Split(strings.Trim(b.remoteDir, "/"), "/")
-					for i, seg := range segs {
-						if seg == "" {
-							continue
+		if b.remotePathEdit {
+			a.remotePathField(c, b)
+		} else {
+			// The crumbs scroll sideways when a deep path outgrows the bar,
+			// so the actions on the right keep their room. A click on the
+			// empty part of the bar edits the whole path, as Explorer's
+			// address bar does.
+			ui.ScrollHorizontal(c).Grow(1).Height(32).
+				OnClick(b.beginRemotePathEdit).Children(func() {
+				ui.Row(c).Height(32).Gap(2).AlignItems(ui.Center).Children(func() {
+					a.pathCrumb(c, t, b, "/", "/", b.remoteDir == "/")
+					if b.remoteDir != "/" {
+						acc := "/"
+						segs := strings.Split(strings.Trim(b.remoteDir, "/"), "/")
+						for i, seg := range segs {
+							if seg == "" {
+								continue
+							}
+							acc = path.Join(acc, seg)
+							ui.Text(c, "›").FontSize(9).TextColor(colMuted2)
+							a.pathCrumb(c, t, b, shortLabel(seg, 18), acc, i == len(segs)-1)
 						}
-						acc = path.Join(acc, seg)
-						ui.Text(c, "›").FontSize(9).TextColor(colMuted2)
-						a.pathCrumb(c, t, b, shortLabel(seg, 18), acc, i == len(segs)-1)
 					}
-				}
+				})
 			})
-		})
+		}
 
 		ui.Text(c, fmt.Sprintf("%d 项", len(b.remoteEntries))).FontSize(8.5).
 			Font("Cascadia Code").TextColor(colMuted2).NoWrap()
@@ -170,6 +185,65 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 	})
 }
 
+func (a *App) remotePathField(c *ui.Context, b *fileBrowser) {
+	input := ui.TextInput(c, &b.remotePathInput).Grow(1).Height(22).
+		Font("Cascadia Code").FontSize(9.8).Placeholder("输入远程路径，回车跳转").
+		SelectionColor(colCyan.Alpha(0.65)).
+		Bind(&b.remotePathFocus)
+	input.OnTextKey(func(k ui.TextKey) bool {
+		if k.Key != ui.KeyEscape || k.Mods != 0 {
+			return false
+		}
+		b.endRemotePathEdit()
+		return true
+	})
+	if b.remotePathPick {
+		// Entering the editor selects the whole path, as Explorer does, so
+		// typing replaces it and copying takes the full address.
+		input.SetTextSelection(0, len([]rune(b.remotePathInput)))
+		b.remotePathFocus.Focus(c)
+		b.remotePathPick = false
+		b.remotePathWait = true
+	}
+	if input.Submitted() {
+		a.navigateRemote(b, b.remotePathInput)
+		if b.remoteErr == "" {
+			b.endRemotePathEdit()
+		}
+	}
+}
+
+// syncRemotePathEdit leaves the path editor once its focus has moved away,
+// after waiting for the focus requested when it opened.
+func (b *fileBrowser) syncRemotePathEdit(c *ui.Context) {
+	if !b.remotePathEdit || b.remotePathPick {
+		return
+	}
+	if b.remotePathWait {
+		if b.remotePathFocus.Focused(c) {
+			b.remotePathWait = false
+		}
+		return
+	}
+	if !b.remotePathFocus.Focused(c) {
+		b.endRemotePathEdit()
+	}
+}
+
+func (b *fileBrowser) beginRemotePathEdit() {
+	b.remotePathEdit = true
+	b.remotePathInput = b.remoteDir
+	b.remotePathPick = true
+	b.remotePathWait = false
+}
+
+func (b *fileBrowser) endRemotePathEdit() {
+	b.remotePathEdit = false
+	b.remotePathInput = b.remoteDir
+	b.remotePathPick = false
+	b.remotePathWait = false
+}
+
 func (a *App) pathCrumb(c *ui.Context, t *ui.Theme, b *fileBrowser, label, target string, active bool) {
 	btn := ui.ButtonBase(c.Key("bf-crumb-"+target)).Height(20).Padding(0, 4).Radius(3).
 		Center().Tooltip(target)
@@ -182,14 +256,17 @@ func (a *App) pathCrumb(c *ui.Context, t *ui.Theme, b *fileBrowser, label, targe
 		ui.Text(c, label).FontSize(9.5).Font("Cascadia Code").
 			TextColor(condColor(active, colCyan, colMuted)).NoWrap()
 	})
-	if btn.Clicked() && !active {
-		a.navigateRemote(b, target)
+	if btn.Clicked() {
+		if active {
+			b.beginRemotePathEdit()
+		} else {
+			a.navigateRemote(b, target)
+		}
 	}
 }
 
 func (a *App) bottomFileTree(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	ui.Column(c).Width(190).FillHeight().Background(colTreeBg).
-		BorderWidth(0, 1, 0, 0).BorderColor(colLine).Children(func() {
+	ui.Column(c).FillWidth().FillHeight().Background(colTreeBg).Children(func() {
 		ui.Row(c).Height(32).Shrink(0).Padding(0, 9).Gap(6).AlignItems(ui.Center).
 			BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
 			iconEl(c, iconFolder, 12, colMuted2)
@@ -248,7 +325,7 @@ func (a *App) treeDirRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 		}
 
 		row := ui.ButtonBase(c.Key("bf-tree-"+dir)).Grow(1).Height(22).
-			Padding(0, 4).Radius(4).Gap(6).AlignItems(ui.Center)
+			Padding(0, 4).Radius(4).Gap(6).AlignItems(ui.Center).Justify(ui.Start)
 		if active {
 			row.Background(colCyan.Alpha(0.08))
 		} else if row.Hovered() {

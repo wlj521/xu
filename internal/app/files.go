@@ -31,6 +31,10 @@ type fileBrowser struct {
 
 	remoteDir       string
 	remotePathInput string
+	remotePathEdit  bool
+	remotePathPick  bool
+	remotePathWait  bool
+	remotePathFocus ui.Handle
 	remoteEntries   []os.FileInfo
 	remoteSel       int
 	remoteErr       string

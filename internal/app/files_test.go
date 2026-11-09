@@ -96,6 +96,172 @@ func TestFileDockShowsTreeAndFullColumns(t *testing.T) {
 	}
 }
 
+func TestFileTreeRowsAlignLeft(t *testing.T) {
+	_, b, tt := newRemoteDockApp(t)
+	b.treeKids["/"] = []string{"/etc"}
+	b.treeLoaded["/"] = true
+	b.treeOpen["/"] = true
+	tt.Frame()
+
+	label, ok := tt.Find("etc")
+	if !ok {
+		t.Fatalf("tree entry missing; texts = %q", tt.Texts())
+	}
+	head, ok := tt.Find("目录")
+	if !ok {
+		t.Fatalf("tree header missing; texts = %q", tt.Texts())
+	}
+	if label.X > head.X+70 {
+		t.Fatalf("tree entry starts at %.1f, header at %.1f: the rows are not left aligned", label.X, head.X)
+	}
+}
+
+func TestFileTableFillsDockWidth(t *testing.T) {
+	_, _, tt := newRemoteDockApp(t)
+	tt.SetSize(2100, 900)
+	tt.Frame()
+
+	last, ok := tt.Find("用户/组")
+	if !ok {
+		t.Fatalf("last column missing; texts = %q", tt.Texts())
+	}
+	if right := last.X + last.W; right < 1900 {
+		t.Fatalf("the file table ends at %.1f in a 2100-wide window: the dock leaves the right side empty", right)
+	}
+}
+
+func TestFileTreeDividerResizes(t *testing.T) {
+	a, _, tt := newRemoteDockApp(t)
+	tt.SetSize(2100, 900)
+	tt.Frame()
+
+	head, ok := tt.Find("目录")
+	if !ok {
+		t.Fatalf("tree header missing; texts = %q", tt.Texts())
+	}
+	name, ok := tt.Find("文件名")
+	if !ok {
+		t.Fatalf("file header missing; texts = %q", tt.Texts())
+	}
+
+	// The tree panel starts after the header's 9 DIP padding, 12 DIP icon
+	// and 6 DIP gap; its right edge is the split's divider.
+	treeLeft := head.X - 27
+	divider := treeLeft + a.fileSplit
+	y := head.Y + 80
+	tt.Press(divider+0.5, y)
+	tt.Move(divider+60.5, y)
+	tt.Release(divider+60.5, y)
+	tt.Frame()
+
+	if a.fileSplit < 265 || a.fileSplit > 275 {
+		t.Fatalf("dragged the divider 60 DIPs right, tree width = %.1f", a.fileSplit)
+	}
+	moved, ok := tt.Find("文件名")
+	if !ok {
+		t.Fatalf("file header missing after drag; texts = %q", tt.Texts())
+	}
+	if moved.X < name.X+55 || moved.X > name.X+65 {
+		t.Fatalf("the file pane moved from %.1f to %.1f, want 60 DIPs", name.X, moved.X)
+	}
+}
+
+func TestPathBarBlankClickEditsAndSelectsPath(t *testing.T) {
+	_, b, tt := newRemoteDockApp(t)
+	b.remoteDir = "/projects/jt808/platform"
+	b.remotePathInput = b.remoteDir
+	tt.Frame()
+
+	crumbs, ok := tt.Find("platform")
+	if !ok {
+		t.Fatalf("current crumb missing; texts = %q", tt.Texts())
+	}
+	tt.ClickAt(crumbs.X+crumbs.W+120, crumbs.Y+crumbs.H/2)
+	tt.Frame()
+	tt.Frame()
+	if !b.remotePathEdit {
+		t.Fatal("clicking the empty path bar did not open the path editor")
+	}
+	if active, _ := tt.TextInputActive(); !active {
+		t.Fatal("the path editor does not have the keyboard focus")
+	}
+
+	// The whole path starts selected, so typing replaces it at once.
+	tt.Type("x")
+	tt.Frame()
+	if b.remotePathInput != "x" {
+		t.Fatalf("typing did not replace the selected path: %q", b.remotePathInput)
+	}
+
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if b.remotePathEdit || b.remotePathInput != b.remoteDir {
+		t.Fatalf("Escape did not restore the crumbs: edit=%v path=%q", b.remotePathEdit, b.remotePathInput)
+	}
+}
+
+func TestPathBarCurrentCrumbEditsPath(t *testing.T) {
+	_, b, tt := newRemoteDockApp(t)
+	b.remoteDir = "/projects/jt808/platform"
+	b.remotePathInput = b.remoteDir
+	tt.Frame()
+
+	if err := clickText(tt, "platform"); err != nil {
+		t.Fatalf("click current crumb: %v", err)
+	}
+	tt.Frame()
+	if !b.remotePathEdit {
+		t.Fatal("clicking the current crumb did not open the path editor")
+	}
+}
+
+func TestPathBarEditorClosesWhenFocusLeaves(t *testing.T) {
+	_, b, tt := newRemoteDockApp(t)
+	b.remoteDir = "/projects/jt808/platform"
+	b.remotePathInput = b.remoteDir
+	tt.Frame()
+
+	crumbs, ok := tt.Find("platform")
+	if !ok {
+		t.Fatalf("current crumb missing; texts = %q", tt.Texts())
+	}
+	tt.ClickAt(crumbs.X+crumbs.W+120, crumbs.Y+crumbs.H/2)
+	tt.Frame()
+	tt.Frame()
+	if !b.remotePathEdit {
+		t.Fatal("the path editor did not open")
+	}
+
+	if err := clickText(tt, "文件名"); err != nil {
+		t.Fatalf("click table header: %v", err)
+	}
+	tt.Frame()
+	if b.remotePathEdit {
+		t.Fatal("the path editor stayed open after the focus left it")
+	}
+	if b.remotePathInput != b.remoteDir {
+		t.Fatalf("leaving the editor left the path as %q", b.remotePathInput)
+	}
+}
+
+func TestPathBarParentCrumbStillNavigates(t *testing.T) {
+	_, b, tt := newRemoteDockApp(t)
+	b.remoteDir = "/projects/jt808/platform"
+	b.remotePathInput = b.remoteDir
+	tt.Frame()
+
+	if err := clickText(tt, "projects"); err != nil {
+		t.Fatalf("click parent crumb: %v", err)
+	}
+	tt.Frame()
+	if b.remotePathEdit {
+		t.Fatal("clicking a parent crumb opened the editor instead of navigating")
+	}
+	if b.remoteErr != "SFTP 不可用" {
+		t.Fatalf("parent crumb did not navigate: err=%q", b.remoteErr)
+	}
+}
+
 func TestSingleClickFolderOpensNextLevel(t *testing.T) {
 	_, b, tt := newRemoteDockApp(t)
 	if err := clickText(tt, "etc/"); err != nil {
