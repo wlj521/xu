@@ -24,7 +24,7 @@ func TestSettingsViewRenders(t *testing.T) {
 
 	a.settingsSection = 1
 	tt.Frame()
-	for _, want := range []string{"字体", "字号", "回滚缓冲", "选中即复制"} {
+	for _, want := range []string{"字体", "终端字体", "字号", "回滚缓冲", "选中即复制"} {
 		if !tt.HasText(want) {
 			t.Fatalf("terminal settings missing %q; texts = %q", want, tt.Texts())
 		}

@@ -618,7 +618,7 @@ func (a *App) closeAllTabs() {
 func (a *App) tabWidth(c *ui.Context, i int, tab *appTab) float32 {
 	numW, _ := c.MeasureText(0, ui.Span{Text: fmt.Sprintf("%d", i+1), Size: 8.8, Font: "Cascadia Code"})
 	nameW, _ := c.MeasureText(0, ui.Span{Text: shortLabel(a.tabDisplayTitle(tab), 12), Size: 11.2, Weight: 600})
-	w := float32(63) + numW + nameW
+	w := float32(65) + numW + nameW
 	if tab.kind == tabQuickConnect {
 		chipW, _ := c.MeasureText(0, ui.Span{Text: "快速连接", Size: 8})
 		w += 6 + chipW
@@ -636,7 +636,7 @@ func (a *App) tabWidth(c *ui.Context, i int, tab *appTab) float32 {
 func (a *App) tabsStripScrollWidth(c *ui.Context, quick bool) float32 {
 	content := float32(0)
 	for i, tab := range a.tabs {
-		content += a.tabWidth(c, i, tab) + 2
+		content += a.tabWidth(c, i, tab) + 4
 	}
 	w, _ := c.Size()
 	fixed := float32(200) // manager, divider, "+", gaps, padding and actions
@@ -663,16 +663,17 @@ func (a *App) tabStrip(c *ui.Context, t *ui.Theme) {
 	ts := a.activeTerminal()
 	quick := a.quickTabActive()
 
-	ui.Row(c).Height(34).Shrink(0).Padding(0, 10).Gap(4).AlignItems(ui.Center).
+	ui.Row(c).Height(tabStripHeight).Shrink(0).Padding(0, 10).Gap(4).AlignItems(ui.Center).
 		Background(colPanelTop).BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
-		manager := ui.ButtonBase(c.Key("tab-manager")).Size(40, 34).Radius(4).Center().
+		manager := ui.ButtonBase(c.Key("tab-manager")).Size(32, tabPillHeight).Radius(tabPillRadius).Center().
 			Tooltip("连接管理器").Label("连接管理器")
+		manager.Border(1, ui.Transparent)
 		if manager.Hovered() || a.managerOpen {
 			manager.Background(colPanel)
 			manager.Border(1, colLine2)
 		}
 		manager.Children(func() {
-			iconEl(c, iconManager, 23, colCyan)
+			iconEl(c, iconManager, 20, colCyan)
 		})
 		if manager.Clicked() {
 			a.openConnectionManager()
@@ -683,30 +684,22 @@ func (a *App) tabStrip(c *ui.Context, t *ui.Theme) {
 		// Tabs scroll sideways when they outgrow the strip; the scroller is
 		// only as wide as the tabs while they fit, so "+" sits right after
 		// the last tab, and stays pinned when they do not.
-		ui.ScrollHorizontal(c).Width(a.tabsStripScrollWidth(c, quick)).Height(34).
+		ui.ScrollHorizontal(c).Width(a.tabsStripScrollWidth(c, quick)).Height(tabStripHeight).
 			Scrollbars(false).Children(func() {
-			ui.Row(c).Height(34).AlignItems(ui.Center).Gap(2).Children(func() {
+			ui.Row(c).Height(tabStripHeight).AlignItems(ui.Center).Gap(4).Children(func() {
 				for i, tab := range a.tabs {
 					i, tab := i, tab
 					active := i == a.activeTab
 					title := a.tabDisplayTitle(tab)
 					var closed bool
 					tabEl := ui.ButtonBase(c.Key(fmt.Sprintf("tab-%d", tab.id))).
-						Height(34).Padding(0, 9).Gap(6).Radius(0).AlignItems(ui.Center).
+						Height(tabPillHeight).Padding(0, 10).Gap(6).Radius(tabPillRadius).AlignItems(ui.Center).
 						Label(fmt.Sprintf("标签页 %d：%s", i+1, title)).
 						Tooltip(fmt.Sprintf("标签页 %d · %s", i+1, title))
+					tabEl = styleTabPill(tabEl, active)
 					tabEl.ContextMenu(func(m *ui.Menu) {
 						a.tabContextMenu(m, tab)
 					})
-					if active {
-						tabEl.Background(colPanel)
-						tabEl.Border(1, colLine2)
-						tabEl.DrawOver(func(p *ui.Painter, r ui.Rect) {
-							p.Fill(ui.Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: 2.5}, colCyan, 0)
-						})
-					} else if tabEl.Hovered() {
-						tabEl.Background(colPanel2.Alpha(0.7))
-					}
 					tabEl.Children(func() {
 						idxColor := colMuted2
 						nameColor := colMuted
@@ -759,10 +752,13 @@ func (a *App) tabStrip(c *ui.Context, t *ui.Theme) {
 			})
 		})
 
-		add := ui.ButtonBase(c.Key("tab-new")).Size(34, 34).Radius(4).Center().
+		add := ui.ButtonBase(c.Key("tab-new")).Size(30, tabPillHeight).Radius(tabPillRadius).Center().
 			Tooltip("新建标签页（快速连接）").Label("新建标签页")
 		add.Background(ui.Transparent)
-		add.Border(0, ui.Transparent)
+		add.Border(1, ui.Transparent)
+		if add.Hovered() {
+			add.Background(colPanel2.Alpha(0.72))
+		}
 		addColor := colText2
 		if add.Hovered() {
 			addColor = colCyan

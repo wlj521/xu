@@ -17,7 +17,7 @@ const (
 )
 
 func (a *App) dockShell(c *ui.Context, t *ui.Theme) {
-	ui.Column(c).Height(32).Shrink(0).Background(colPanelTop).
+	ui.Column(c).Height(tabStripHeight).Shrink(0).Background(colPanelTop).
 		BorderWidth(1, 0, 0, 0).BorderColor(colLine2).Children(func() {
 		a.dockHead(c, t)
 	})
@@ -46,7 +46,7 @@ func (a *App) dockHead(c *ui.Context, t *ui.Theme) {
 		tunnelCount = len(a.forwards[ts.ID])
 	}
 
-	ui.Row(c).Height(32).Shrink(0).Padding(0, 9).Gap(2).AlignItems(ui.Center).
+	ui.Row(c).Height(tabStripHeight).Shrink(0).Padding(0, 9).Gap(4).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
 		tabs := []struct {
 			tab   dockTab
@@ -63,23 +63,19 @@ func (a *App) dockHead(c *ui.Context, t *ui.Theme) {
 			item := item
 			active := dockTab(a.bottomFileTab) == item.tab
 			b := ui.ButtonBase(c.Key(fmt.Sprintf("dock-tab-%d", item.tab))).
-				Height(32).Padding(0, 10).Radius(0).Gap(6).AlignItems(ui.Center)
-			if active {
-				b.Background(colPanel)
-				b.Border(1, colLine2)
-				b.DrawOver(func(p *ui.Painter, r ui.Rect) {
-					p.Fill(ui.Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: 2.5}, colCyan, 0)
-				})
-			} else if b.Hovered() {
-				b.Background(colPanel2.Alpha(0.7))
-			}
+				Height(tabPillHeight).Padding(0, 11).Radius(tabPillRadius).Gap(6).AlignItems(ui.Center)
+			b = styleTabPill(b, active)
 			b.Children(func() {
 				iconEl(c, item.icon, 13, condColor(active, colCyan, colMuted))
 				ui.Text(c, item.label).FontSize(10.8).FontWeight(condWeight(active, 600, 500)).
 					TextColor(condColor(active, colText, colText2)).NoWrap()
 				if item.count > 0 {
+					countBG := colAccentSoft
+					if active {
+						countBG = colCyan.Alpha(0.16)
+					}
 					ui.Box(c).Height(14).Padding(0, 4).Radius(7).
-						Background(colAccentSoft).Center().Children(func() {
+						Background(countBG).Center().Children(func() {
 						ui.Text(c, fmt.Sprintf("%d", item.count)).FontSize(8).
 							Font("Cascadia Code").TextColor(colCyan).NoWrap()
 					})

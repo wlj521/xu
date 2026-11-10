@@ -40,6 +40,7 @@ func (a *App) openSettings() {
 	a.searchOpen = false
 	a.settingsErr = ""
 	a.settingsStatus = ""
+	a.settingsFontPick = fontChoiceForFamily(a.settings.FontFamily)
 	a.settingsFontSizeF = float64(a.settings.FontSize)
 	a.settingsScrollPick = fmt.Sprintf("%d MB", a.settings.ScrollbackMB)
 }
@@ -74,58 +75,71 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 		section = 0
 	}
 
-	dlgW, dlgH := fitDialog(c, 760, 560)
+	dlgW, dlgH := fitDialog(c, 800, 580)
 	ui.DialogBase(c, &a.settingsOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(shade)
 		panel.Width(dlgW).Height(dlgH).Padding(0).Background(colPanel).
 			Border(1, colLine2).Radius(14).
 			Shadow(0, 26, 70, 0, ui.Hex("#000000").Alpha(0.42)).Children(func() {
 			ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
-				ui.Column(c).Width(196).FillHeight().Padding(14, 10, 10, 10).
-					Background(colPanelTop).
+				ui.Column(c).Width(220).FillHeight().Padding(24, 18, 20, 18).
+					Background(colPanelTop).Radius(14, 0, 0, 14).
 					BorderWidth(0, 1, 0, 0).BorderColor(colLine).Children(func() {
-					ui.Text(c, "PREFERENCES").FontSize(8.5).FontWeight(650).LetterSpacing(1.2).
-						TextColor(colMuted2).Padding(0, 8, 4, 8)
-					ui.Text(c, "设置").FontSize(17).FontWeight(650).TextColor(colText).
-						Padding(0, 8, 12, 8)
+					ui.Column(c).FillWidth().Gap(3).Padding(0, 0, 20, 0).Children(func() {
+						ui.Text(c, "设置").FontSize(18).FontWeight(650).TextColor(colText)
+						ui.Text(c, "PREFERENCES").FontSize(8).FontWeight(650).
+							LetterSpacing(1.3).TextColor(colMuted2)
+					})
 
-					for i, sectionItem := range sections {
-						i, sectionItem := i, sectionItem
-						active := section == i
-						b := ui.ButtonBase(c.Key(fmt.Sprintf("settings-nav-%d", i))).
-							FillWidth().Height(32).Padding(0, 8).Radius(6).Gap(8).AlignItems(ui.Center)
-						if active {
-							b.Background(colAccentSoft)
-							b.Border(1, colAccentLine)
-						} else if b.Hovered() {
-							b.Background(colPanel2)
+					ui.Column(c).FillWidth().Gap(4).Children(func() {
+						for i, sectionItem := range sections {
+							i, sectionItem := i, sectionItem
+							active := section == i
+							b := ui.ButtonBase(c.Key(fmt.Sprintf("settings-nav-%d", i))).
+								FillWidth().Height(38).Padding(0, 12).Radius(8).
+								Gap(9).AlignItems(ui.Center).Justify(ui.Start)
+							if active {
+								b.Background(colAccentSoft)
+							} else if b.Hovered() {
+								b.Background(colPanel2.Alpha(0.72))
+							}
+							b.Children(func() {
+								iconEl(c, sectionItem.icon, 14, condColor(active, colCyan, colMuted))
+								ui.Text(c, sectionItem.label).FontSize(11.8).
+									FontWeight(condWeight(active, 600, 500)).
+									TextColor(condColor(active, colText, colText2)).NoWrap()
+							})
+							if b.Clicked() {
+								a.settingsSection = i
+							}
 						}
-						b.Children(func() {
-							iconEl(c, sectionItem.icon, 14, condColor(active, colCyan, colMuted))
-							ui.Text(c, sectionItem.label).FontSize(11.8).
-								FontWeight(condWeight(active, 600, 500)).
-								TextColor(condColor(active, colText, colText2))
-						})
-						if b.Clicked() {
-							a.settingsSection = i
-						}
-					}
+					})
+
 					ui.Text(c, "").Grow(1)
-					ui.Row(c).Gap(5).AlignItems(ui.Center).Padding(0, 8).Children(func() {
-						ui.Box(c).Size(16, 16).Radius(5).Gradient(colCyan, colBlue, 135).
+					ui.Box(c).FillWidth().Height(1).Background(colLine).
+						Margin(0, 0, 12, 0)
+					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+						ui.Box(c).Size(24, 24).Radius(7).Gradient(colCyan, colBlue, 135).
 							Center().Children(func() {
-							ui.Text(c, "X").FontSize(10).FontWeight(800).TextColor(colAccentText)
+							ui.Text(c, "X").FontSize(11).FontWeight(800).TextColor(colAccentText)
 						})
-						ui.Text(c, "Xu 0.1.0").FontSize(9).Font("Cascadia Code").
-							TextColor(colMuted2)
+						ui.Column(c).Grow(1).Gap(1).Children(func() {
+							ui.Text(c, "Xu 0.1.0").FontSize(9.2).Font("Cascadia Code").
+								TextColor(colText2)
+							ui.Text(c, "修改即时生效").FontSize(8.2).TextColor(colMuted2)
+						})
 					})
 				})
 
-				ui.Column(c).Grow(1).FillHeight().Children(func() {
-					ui.Row(c).Height(36).Shrink(0).Padding(0, 12).Children(func() {
-						ui.Text(c, "").Grow(1)
-						close := ui.ButtonBase(c.Key("settings-modal-close")).Size(24, 24).
-							Radius(6).Center().Tooltip("关闭").Label("关闭")
+				ui.Column(c).Grow(1).FillHeight().Padding(24, 24, 20, 24).Gap(16).Children(func() {
+					ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Start).Children(func() {
+						ui.Column(c).Grow(1).Gap(5).Children(func() {
+							ui.Text(c, titles[section]).FontSize(18).FontWeight(650).TextColor(colText)
+							ui.Text(c, subtitles[section]).FontSize(11).TextColor(colMuted).
+								LineHeight(1.55)
+						})
+						close := ui.ButtonBase(c.Key("settings-modal-close")).Size(26, 26).
+							Radius(7).Center().Tooltip("关闭").Label("关闭")
 						if close.Hovered() {
 							close.Background(colPanel2)
 						}
@@ -135,11 +149,8 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 						}
 					})
 
-					ui.Scroll(c).Grow(1).Padding(0, 22, 24, 22).Children(func() {
+					ui.Scroll(c).Grow(1).Children(func() {
 						ui.Column(c).FillWidth().Gap(6).Children(func() {
-							ui.Text(c, titles[section]).FontSize(15.5).FontWeight(650).TextColor(colText)
-							ui.Text(c, subtitles[section]).FontSize(11.5).TextColor(colMuted).
-								LineHeight(1.5).Padding(0, 0, 8, 0)
 							ui.Column(c).FillWidth().Children(func() {
 								switch section {
 								case 1:
@@ -304,10 +315,11 @@ func (a *App) settingsTerminal(c *ui.Context, t *ui.Theme) {
 					Font("Cascadia Code").TextColor(colText2).Width(48).TextAlign(ui.End)
 			})
 		})
-		settingsRow(c, "字体", "留空时使用系统等宽字体。", func() {
-			input := ui.TextInput(c, &a.settings.FontFamily).Width(220).Height(31).
-				Font("Cascadia Code").FontSize(11).Placeholder("Cascadia Code")
-			if input.Changed() {
+		settingsRow(c, "字体", "仅显示已安装的等宽字体，选择后立即应用。", func() {
+			pick := ui.Combobox(c, &a.settingsFontPick, terminalFontChoices(a.settings.FontFamily)).
+				Width(250).Height(31).Label("终端字体")
+			if pick.Changed() {
+				a.settings.FontFamily = fontFamilyForChoice(a.settingsFontPick)
 				a.applyTermSettings()
 			}
 		})
@@ -539,6 +551,7 @@ func (a *App) loadSettings() {
 	a.settingsScrollback = strconv.Itoa(a.settings.ScrollbackMB)
 	a.settingsFontSizeF = float64(a.settings.FontSize)
 	a.settingsScrollPick = fmt.Sprintf("%d MB", a.settings.ScrollbackMB)
+	a.settingsFontPick = fontChoiceForFamily(a.settings.FontFamily)
 }
 
 func (a *App) saveSettings() {

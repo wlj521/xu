@@ -9,10 +9,26 @@ const (
 	fsBody    = 12
 	fsTitle   = 13
 	fsDisplay = 20
+
+	tabStripHeight = 36
+	tabPillHeight  = 28
+	tabPillRadius  = 7
 )
 
 func statusDot(c *ui.Context, color ui.Color, size float32) ui.Element {
 	return ui.Box(c).Size(size, size).Radius(size / 2).Background(color).Shrink(0)
+}
+
+func styleTabPill(b ui.Element, active bool) ui.Element {
+	b = b.Border(1, ui.Transparent)
+	switch {
+	case active:
+		b.Background(colAccentSoft)
+		b.Border(1, colAccentLine)
+	case b.Hovered():
+		b.Background(colPanel2.Alpha(0.72))
+	}
+	return b
 }
 
 func primaryAction(c *ui.Context, key, label string, icon *ui.SVG) ui.Element {
@@ -205,4 +221,3 @@ func fitDialogWidth(c *ui.Context, w float32) float32 {
 	}
 	return w
 }
-

@@ -43,10 +43,11 @@ type App struct {
 	pickerOpen       bool
 	systemDark       bool
 
-	settingsSection int
-	connFilter      string
-	authFilter      string
-	connPageSel     int64
+	settingsSection  int
+	settingsFontPick string
+	connFilter       string
+	authFilter       string
+	connPageSel      int64
 
 	host     string
 	port     string
@@ -195,6 +196,7 @@ func New() *App {
 		batchSplit:         220,
 		searchInit:         true,
 		settings:           defaultSettings(),
+		settingsFontPick:   systemFontChoice,
 		settingsFontSize:   "13",
 		settingsFontSizeF:  13,
 		settingsScrollback: "10",
