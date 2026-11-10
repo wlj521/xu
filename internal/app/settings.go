@@ -84,16 +84,16 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 				ui.Column(c).Width(196).FillHeight().Padding(14, 10, 10, 10).
 					Background(colPanelTop).
 					BorderWidth(0, 1, 0, 0).BorderColor(colLine).Children(func() {
-					ui.Text(c, "PREFERENCES").FontSize(7.5).FontWeight(650).LetterSpacing(1.2).
+					ui.Text(c, "PREFERENCES").FontSize(8.5).FontWeight(650).LetterSpacing(1.2).
 						TextColor(colMuted2).Padding(0, 8, 4, 8)
-					ui.Text(c, "设置").FontSize(15).FontWeight(650).TextColor(colText).
+					ui.Text(c, "设置").FontSize(17).FontWeight(650).TextColor(colText).
 						Padding(0, 8, 12, 8)
 
 					for i, sectionItem := range sections {
 						i, sectionItem := i, sectionItem
 						active := section == i
 						b := ui.ButtonBase(c.Key(fmt.Sprintf("settings-nav-%d", i))).
-							FillWidth().Height(30).Padding(0, 8).Radius(6).Gap(8).AlignItems(ui.Center)
+							FillWidth().Height(32).Padding(0, 8).Radius(6).Gap(8).AlignItems(ui.Center)
 						if active {
 							b.Background(colAccentSoft)
 							b.Border(1, colAccentLine)
@@ -101,8 +101,8 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 							b.Background(colPanel2)
 						}
 						b.Children(func() {
-							iconEl(c, sectionItem.icon, 13, condColor(active, colCyan, colMuted))
-							ui.Text(c, sectionItem.label).FontSize(10.5).
+							iconEl(c, sectionItem.icon, 14, condColor(active, colCyan, colMuted))
+							ui.Text(c, sectionItem.label).FontSize(11.8).
 								FontWeight(condWeight(active, 600, 500)).
 								TextColor(condColor(active, colText, colText2))
 						})
@@ -114,9 +114,9 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 					ui.Row(c).Gap(5).AlignItems(ui.Center).Padding(0, 8).Children(func() {
 						ui.Box(c).Size(16, 16).Radius(5).Gradient(colCyan, colBlue, 135).
 							Center().Children(func() {
-							ui.Text(c, "X").FontSize(9).FontWeight(800).TextColor(colAccentText)
+							ui.Text(c, "X").FontSize(10).FontWeight(800).TextColor(colAccentText)
 						})
-						ui.Text(c, "Xu 0.1.0").FontSize(8).Font("Cascadia Code").
+						ui.Text(c, "Xu 0.1.0").FontSize(9).Font("Cascadia Code").
 							TextColor(colMuted2)
 					})
 				})
@@ -137,8 +137,8 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 
 					ui.Scroll(c).Grow(1).Padding(0, 22, 24, 22).Children(func() {
 						ui.Column(c).FillWidth().Gap(6).Children(func() {
-							ui.Text(c, titles[section]).FontSize(13).FontWeight(650).TextColor(colText)
-							ui.Text(c, subtitles[section]).FontSize(10).TextColor(colMuted).
+							ui.Text(c, titles[section]).FontSize(15.5).FontWeight(650).TextColor(colText)
+							ui.Text(c, subtitles[section]).FontSize(11.5).TextColor(colMuted).
 								LineHeight(1.5).Padding(0, 0, 8, 0)
 							ui.Column(c).FillWidth().Children(func() {
 								switch section {
@@ -276,7 +276,7 @@ func (a *App) themeChoiceCard(c *ui.Context, t *ui.Theme, key, label string, mod
 				})
 			}
 			ui.Row(c).Height(24).Padding(0, 8).Gap(5).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, label).FontSize(10.5).FontWeight(condWeight(active, 600, 500)).
+				ui.Text(c, label).FontSize(11.5).FontWeight(condWeight(active, 600, 500)).
 					TextColor(condColor(active, colText, colText2))
 				ui.Text(c, "").Grow(1)
 				if active {
@@ -300,13 +300,13 @@ func (a *App) settingsTerminal(c *ui.Context, t *ui.Theme) {
 					a.settings.FontSize = int(a.settingsFontSizeF + 0.5)
 					a.applyTermSettings()
 				}
-				ui.Text(c, fmt.Sprintf("%.1f px", a.settingsFontSizeF)).FontSize(9.5).
+				ui.Text(c, fmt.Sprintf("%.1f px", a.settingsFontSizeF)).FontSize(10.5).
 					Font("Cascadia Code").TextColor(colText2).Width(48).TextAlign(ui.End)
 			})
 		})
 		settingsRow(c, "字体", "留空时使用系统等宽字体。", func() {
 			input := ui.TextInput(c, &a.settings.FontFamily).Width(220).Height(31).
-				Font("Cascadia Code").FontSize(10).Placeholder("Cascadia Code")
+				Font("Cascadia Code").FontSize(11).Placeholder("Cascadia Code")
 			if input.Changed() {
 				a.applyTermSettings()
 			}
@@ -362,8 +362,8 @@ func (a *App) settingsAbout(c *ui.Context, t *ui.Theme) {
 			ui.Text(c, "X").FontSize(18).FontWeight(800).LetterSpacing(-0.6).TextColor(colAccentText)
 		})
 		ui.Column(c).Grow(1).Gap(2).Children(func() {
-			ui.Text(c, "Xu 0.1.0").FontSize(13).FontWeight(650).TextColor(colText)
-			ui.Text(c, "SSH Workspace · mygo + Ghostty VT").FontSize(9).
+			ui.Text(c, "Xu 0.1.0").FontSize(14.5).FontWeight(650).TextColor(colText)
+			ui.Text(c, "SSH Workspace · mygo + Ghostty VT").FontSize(10.5).
 				Font("Cascadia Code").TextColor(colMuted)
 		})
 	})
@@ -391,11 +391,11 @@ func (a *App) settingsAbout(c *ui.Context, t *ui.Theme) {
 				for j := 0; j < 2 && i+j < len(pairs); j++ {
 					pair := pairs[i+j]
 					ui.Row(c).Grow(1).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, pair[0]).FontSize(9.5).TextColor(colText2)
+						ui.Text(c, pair[0]).FontSize(10.8).TextColor(colText2)
 						ui.Text(c, "").Grow(1)
 						ui.Box(c).Height(18).Padding(0, 6).Radius(4).Background(colPanel2).
 							Border(1, colLine).Center().Children(func() {
-							ui.Text(c, pair[1]).FontSize(8).Font("Cascadia Code").TextColor(colMuted2)
+							ui.Text(c, pair[1]).FontSize(9.2).Font("Cascadia Code").TextColor(colMuted2)
 						})
 					})
 				}
@@ -415,7 +415,7 @@ func settingsGroup(c *ui.Context, label string, first bool, build func()) {
 	}
 	col.Children(func() {
 		if label != "" {
-			ui.Text(c, label).FontSize(8.5).FontWeight(650).LetterSpacing(0.8).TextColor(colMuted2)
+			ui.Text(c, label).FontSize(9.5).FontWeight(650).LetterSpacing(0.8).TextColor(colMuted2)
 		}
 		build()
 	})
@@ -424,9 +424,9 @@ func settingsGroup(c *ui.Context, label string, first bool, build func()) {
 func settingsRow(c *ui.Context, title, desc string, control func()) {
 	ui.Row(c).FillWidth().Gap(16).AlignItems(ui.Center).Children(func() {
 		ui.Column(c).Grow(1).Gap(2).Children(func() {
-			ui.Text(c, title).FontSize(10.5).FontWeight(600).TextColor(colText2)
+			ui.Text(c, title).FontSize(12).FontWeight(600).TextColor(colText2)
 			if desc != "" {
-				ui.Text(c, desc).FontSize(8.8).TextColor(colMuted).LineHeight(1.55)
+				ui.Text(c, desc).FontSize(10).TextColor(colMuted).LineHeight(1.55)
 			}
 		})
 		if control != nil {
@@ -438,9 +438,9 @@ func settingsRow(c *ui.Context, title, desc string, control func()) {
 func settingsKV(c *ui.Context, key, value string) {
 	ui.Row(c).FillWidth().Padding(6, 0).BorderWidth(0, 0, 1, 0).BorderColor(colLine).
 		AlignItems(ui.Center).Children(func() {
-		ui.Text(c, key).FontSize(9.5).TextColor(colMuted)
+		ui.Text(c, key).FontSize(10.8).TextColor(colMuted)
 		ui.Text(c, "").Grow(1)
-		ui.Text(c, value).FontSize(9).Font("Cascadia Code").TextColor(colText2)
+		ui.Text(c, value).FontSize(10.2).Font("Cascadia Code").TextColor(colText2)
 	})
 }
 
@@ -448,7 +448,7 @@ func settingsNote(c *ui.Context, icon *ui.SVG, text string) {
 	ui.Row(c).FillWidth().Padding(8, 10).Gap(7).Radius(7).
 		Background(colPanel2).Border(1, colLine).AlignItems(ui.Start).Children(func() {
 		iconEl(c, icon, 11, colMuted)
-		ui.Text(c, text).FontSize(8.8).TextColor(colMuted).LineHeight(1.55)
+		ui.Text(c, text).FontSize(10).TextColor(colMuted).LineHeight(1.55)
 	})
 }
 
@@ -456,13 +456,13 @@ func (a *App) settingsFooter(c *ui.Context, t *ui.Theme) {
 	if a.settingsErr != "" {
 		ui.Box(c).FillWidth().Padding(9, 11).Radius(6).
 			Background(colRed.Alpha(0.07)).Border(1, colRed.Alpha(0.18)).Children(func() {
-			ui.Text(c, a.settingsErr).FontSize(10).TextColor(colRed)
+			ui.Text(c, a.settingsErr).FontSize(11).TextColor(colRed)
 		})
 	}
 	if a.settingsStatus != "" {
 		ui.Box(c).FillWidth().Padding(9, 11).Radius(6).
 			Background(colGreen.Alpha(0.07)).Border(1, colGreen.Alpha(0.18)).Children(func() {
-			ui.Text(c, a.settingsStatus).FontSize(10).TextColor(colGreen)
+			ui.Text(c, a.settingsStatus).FontSize(11).TextColor(colGreen)
 		})
 	}
 	ui.Row(c).Gap(8).Children(func() {
@@ -470,7 +470,7 @@ func (a *App) settingsFooter(c *ui.Context, t *ui.Theme) {
 			a.saveSettings()
 		}
 		ui.Text(c, "修改会立即作用于此窗口。").
-			FontSize(9.5).TextColor(colMuted2).NoWrap()
+			FontSize(10.5).TextColor(colMuted2).NoWrap()
 	})
 }
 
@@ -479,9 +479,9 @@ func settingsCard(c *ui.Context, title, desc string, build func()) {
 		Border(1, colLine).Radius(8).Gap(12).Children(func() {
 		if title != "" {
 			ui.Column(c).Gap(3).Children(func() {
-				ui.Text(c, title).FontSize(12.5).FontWeight(600).TextColor(colText)
+				ui.Text(c, title).FontSize(14).FontWeight(600).TextColor(colText)
 				if desc != "" {
-					ui.Text(c, desc).FontSize(10).TextColor(colMuted2).LineHeight(1.5)
+					ui.Text(c, desc).FontSize(11).TextColor(colMuted2).LineHeight(1.5)
 				}
 			})
 		}

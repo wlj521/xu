@@ -4,7 +4,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const titleBarHeight = 48
+const titleBarHeight = 32
 
 func (a *App) titleBar(c *ui.Context, t *ui.Theme, bar ui.TitleBar) {
 	h := bar.Height
@@ -18,7 +18,7 @@ func (a *App) titleBar(c *ui.Context, t *ui.Theme, bar ui.TitleBar) {
 		Padding(0, bar.Right+10, 0, 0).Children(func() {
 		a.titleBrand(c, t, h)
 		a.titleChip(c, t, h)
-		a.titleActions(c, t, bar)
+		a.titleActions(c, t, h)
 	})
 }
 
@@ -40,7 +40,7 @@ func (a *App) titleBrand(c *ui.Context, t *ui.Theme, h float32) {
 
 func (a *App) titleChip(c *ui.Context, t *ui.Theme, h float32) {
 	ui.Row(c).Grow(1).Height(h).AlignItems(ui.Center).Padding(0, 16).DragWindow().Children(func() {
-		b := ui.ButtonBase(c.Key("title-search")).Grow(1).MaxWidth(420).Height(30).
+		b := ui.ButtonBase(c.Key("title-search")).Grow(1).MaxWidth(420).Height(28).
 			Padding(0, 10).Radius(8).Gap(8).AlignItems(ui.Center)
 		b.Background(colPanel).Border(1, colLine)
 		if b.Hovered() {
@@ -63,11 +63,11 @@ func (a *App) titleChip(c *ui.Context, t *ui.Theme, h float32) {
 	})
 }
 
-func (a *App) titleActions(c *ui.Context, t *ui.Theme, bar ui.TitleBar) {
-	ui.Row(c).Height(bar.Height).Gap(4).AlignItems(ui.Center).Padding(0, 10).Children(func() {
-		ui.Row(c).Height(30).Padding(0, 2).Gap(2).Radius(8).AlignItems(ui.Center).
+func (a *App) titleActions(c *ui.Context, t *ui.Theme, h float32) {
+	ui.Row(c).Height(h).Gap(4).AlignItems(ui.Center).Padding(0, 10).Children(func() {
+		ui.Row(c).Height(28).Padding(0, 2).Gap(2).Radius(8).AlignItems(ui.Center).
 			Background(colPanel).Border(1, colLine).Children(func() {
-			sun := ui.ButtonBase(c.Key("tb-light")).Width(27).Height(24).Radius(6).Center().Tooltip("浅色主题")
+			sun := ui.ButtonBase(c.Key("tb-light")).Width(27).Height(22).Radius(6).Center().Tooltip("浅色主题")
 			if !a.uiDark() {
 				sun.Background(colSurfaceHover)
 				sun.Border(1, colLine)
@@ -85,7 +85,7 @@ func (a *App) titleActions(c *ui.Context, t *ui.Theme, bar ui.TitleBar) {
 				a.setThemeMode(2)
 			}
 
-			moon := ui.ButtonBase(c.Key("tb-dark")).Width(27).Height(24).Radius(6).Center().Tooltip("深色主题")
+			moon := ui.ButtonBase(c.Key("tb-dark")).Width(27).Height(22).Radius(6).Center().Tooltip("深色主题")
 			if a.uiDark() {
 				moon.Background(colSurfaceHover)
 				moon.Border(1, colLine)

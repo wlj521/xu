@@ -51,6 +51,9 @@ func (a *App) startMonitorFor(ts *termSession, open bool) {
 	if ts == nil {
 		return
 	}
+	if ts.client == nil {
+		return
+	}
 	if ms := a.monitors[ts.ID]; ms != nil {
 		if open {
 			a.monitorOpen = true
@@ -60,38 +63,57 @@ func (a *App) startMonitorFor(ts *termSession, open bool) {
 	}
 
 	ms := &monitorState{termID: ts.ID}
-	col, err := monitorx.Start(a.ctx, ts.client, 2*time.Second,
-		func(s monitorx.Sample) {
-			a.post(func() {
-				if a.monitors[ts.ID] != ms {
-					return
-				}
-				ms.samples = append(ms.samples, s)
-				if len(ms.samples) > 180 {
-					ms.samples = ms.samples[len(ms.samples)-180:]
-				}
-			})
-		},
-		func(err error) {
-			a.post(func() {
-				if a.monitors[ts.ID] == ms {
-					ms.err = err.Error()
-				}
-			})
-		},
-	)
-	if err != nil {
-		a.status = "启动监控失败: " + err.Error()
-		return
-	}
-
-	ms.collector = col
 	a.monitors[ts.ID] = ms
 	if open {
 		a.monitorOpen = true
 		a.filesOpen = false
 		a.fileErr = ""
 	}
+
+	// Starting the collector opens another SSH session and runs shell
+	// commands on the server. Keep it off the connection's first frame.
+	go func() {
+		col, err := monitorx.Start(a.ctx, ts.client, 2*time.Second,
+			func(s monitorx.Sample) {
+				a.post(func() {
+					if a.monitors[ts.ID] != ms {
+						return
+					}
+					ms.samples = append(ms.samples, s)
+					if len(ms.samples) > 180 {
+						ms.samples = ms.samples[len(ms.samples)-180:]
+					}
+				})
+			},
+			func(err error) {
+				a.post(func() {
+					if a.monitors[ts.ID] == ms {
+						ms.err = err.Error()
+					}
+				})
+			},
+		)
+		if a.ctx.Err() != nil {
+			if col != nil {
+				go col.Stop()
+			}
+			return
+		}
+		a.post(func() {
+			if a.monitors[ts.ID] != ms {
+				if col != nil {
+					go col.Stop()
+				}
+				return
+			}
+			if err != nil {
+				ms.err = "启动监控失败: " + err.Error()
+				a.status = ms.err
+				return
+			}
+			ms.collector = col
+		})
+	}()
 }
 
 func (a *App) stopMonitor(termID int64) {

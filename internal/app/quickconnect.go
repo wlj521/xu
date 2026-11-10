@@ -102,17 +102,17 @@ func (a *App) quickStatus(c *ui.Context, t *ui.Theme) {
 			sub = fmt.Sprintf("%s@%s:%d · 正在协商算法与认证", p.Username, p.Host, p.Port)
 		}
 		ui.Box(c).FillWidth().Padding(11, 13).Radius(8).
-			Background(colAmber.Alpha(0.07)).Border(1, colAmber.Alpha(0.22)).Children(func() {
+			Background(colCyan.Alpha(0.07)).Border(1, colCyan.Alpha(0.22)).Children(func() {
 			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-				statusDot(c, colAmber, 7)
+				statusDot(c, colCyan, 7)
 				ui.Column(c).Grow(1).Gap(2).Children(func() {
 					ui.Text(c, "正在连接 "+name).FontSize(10.8).FontWeight(600).
-						TextColor(colAmber).NoWrap()
+						TextColor(colCyan).NoWrap()
 					ui.Text(c, shortLabel(sub, 64)).FontSize(9.2).Font("Cascadia Code").
 						TextColor(colMuted).NoWrap()
 				})
 				ui.Text(c, "连接中…").FontSize(9).Font("Cascadia Code").
-					TextColor(colAmber.Alpha(0.9)).NoWrap()
+					TextColor(colCyan.Alpha(0.9)).NoWrap()
 			})
 		})
 		return
@@ -188,8 +188,8 @@ func (a *App) quickCard(c *ui.Context, t *ui.Theme, p store.Profile) {
 	hovered := card.Hovered()
 	switch {
 	case connecting:
-		card.Background(colAmber.Alpha(0.05))
-		card.BorderColor(colAmber.Alpha(0.3))
+		card.Background(colCyan.Alpha(0.05))
+		card.BorderColor(colCyan.Alpha(0.3))
 	case connected:
 		card.Background(colGreen.Alpha(0.05))
 		card.BorderColor(colGreen.Alpha(0.26))
@@ -204,7 +204,7 @@ func (a *App) quickCard(c *ui.Context, t *ui.Theme, p store.Profile) {
 		}
 		avatarTint := colMuted
 		if connecting {
-			avatarTint = colAmber
+			avatarTint = colCyan
 		} else if connected {
 			avatarTint = colGreen
 		}
@@ -226,7 +226,7 @@ func (a *App) quickCard(c *ui.Context, t *ui.Theme, p store.Profile) {
 				FontSize(9.2).Font("Cascadia Code").TextColor(colMuted).NoWrap()
 		})
 		if connecting {
-			miniTag(c, "连接中", colAmber)
+			miniTag(c, "连接中", colCyan)
 		} else {
 			miniTag(c, authLabel(p.AuthType), colMuted2)
 			chevron := colMuted2
@@ -647,7 +647,7 @@ func (a *App) managerRow(c *ui.Context, t *ui.Theme, p store.Profile) {
 		main.Children(func() {
 			avatarTint := colMuted
 			if connecting {
-				avatarTint = colAmber
+				avatarTint = colCyan
 			} else if connected {
 				avatarTint = colGreen
 			}
@@ -660,7 +660,7 @@ func (a *App) managerRow(c *ui.Context, t *ui.Theme, p store.Profile) {
 					ui.Text(c, shortLabel(p.Name, 26)).FontSize(11.2).FontWeight(600).
 						TextColor(colText).NoWrap()
 					if connecting {
-						statusDot(c, colAmber, 5)
+						statusDot(c, colCyan, 5)
 					} else if connected {
 						statusDot(c, colGreen, 5)
 					}
@@ -669,7 +669,7 @@ func (a *App) managerRow(c *ui.Context, t *ui.Theme, p store.Profile) {
 					FontSize(9.2).Font("Cascadia Code").TextColor(colMuted).NoWrap()
 			})
 			if connecting {
-				miniTag(c, "连接中", colAmber)
+				miniTag(c, "连接中", colCyan)
 			} else if open := a.openSessionsForProfile(p.ID); open > 1 {
 				miniTag(c, fmt.Sprintf("%d 个标签", open), colGreen)
 			} else if connected {

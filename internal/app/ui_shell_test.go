@@ -51,6 +51,37 @@ func TestQuickConnectCardConnectsInCurrentTab(t *testing.T) {
 	}
 }
 
+func TestTitleBarStaysCompact(t *testing.T) {
+	a := New()
+	a.stop()
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+
+	add, ok := tt.Find("新建标签页")
+	if !ok {
+		t.Fatalf("tab strip missing; texts = %q", tt.Texts())
+	}
+	if add.Y > 40 {
+		t.Fatalf("tab strip starts at %.1f below a 32 DIP title bar", add.Y)
+	}
+}
+
+func TestTitleBarRespectsTallerNativeControls(t *testing.T) {
+	a := New()
+	a.stop()
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.SetTitleBar(ui.TitleBar{Height: 48, Right: 120})
+	tt.Frame()
+
+	add, ok := tt.Find("新建标签页")
+	if !ok {
+		t.Fatalf("tab strip missing; texts = %q", tt.Texts())
+	}
+	if add.Y < 47 {
+		t.Fatalf("tab strip starts at %.1f under 48 DIP native controls", add.Y)
+	}
+}
+
 func TestConnectionManagerListsProfiles(t *testing.T) {
 	a := New()
 	a.stop()
@@ -234,6 +265,9 @@ func TestConnectSavedProfileAlwaysOpensNewTab(t *testing.T) {
 	a.connectSavedProfile(p)
 	if !a.connecting || a.connectingProfileID != p.ID {
 		t.Fatalf("connecting=%v profile=%d, want a new dial", a.connecting, a.connectingProfileID)
+	}
+	if a.saveProfile {
+		t.Fatal("connecting an existing profile must not rewrite it on every handshake")
 	}
 	if a.activeTab != 0 {
 		t.Fatalf("activeTab = %d, want the existing tab until the new one connects", a.activeTab)

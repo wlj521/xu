@@ -77,7 +77,6 @@ func (a *App) shellMain(c *ui.Context, t *ui.Theme) {
 				a.dockShell(c, t)
 			}
 		}
-		a.shellStatusBar(c, t)
 	})
 }
 
@@ -302,58 +301,58 @@ func (a *App) connectModal(c *ui.Context, t *ui.Theme) {
 			}
 			ui.Scroll(c).Shrink(0).MaxHeight(bodyMax).Children(func() {
 				ui.Column(c).FillWidth().Padding(16, 18).Gap(10).Children(func() {
-				fieldColumn(c, "名称", func() {
-					ui.TextInput(c, &a.profileName).Label("名称").
-						Placeholder("可选，留空则用 用户名@主机")
-				})
-				ui.Row(c).Gap(10).AlignItems(ui.End).Children(func() {
-					fieldColumn(c, "主机", func() {
-						ui.TextInput(c, &a.host).Label("主机").
-							Placeholder("192.168.1.10").AutoFocus()
-					}).Grow(1)
-					fieldColumn(c, "端口", func() {
-						ui.TextInput(c, &a.port).Label("端口").Placeholder("22")
-					}).Width(96)
-				})
-				ui.Row(c).Gap(10).AlignItems(ui.End).Children(func() {
-					fieldColumn(c, "用户名", func() {
-						ui.TextInput(c, &a.username).Label("用户名").Placeholder("root")
-					}).Grow(1)
-					fieldColumn(c, "分组", func() {
-						ui.Select(c, &a.groupChoice, a.groupOptions()).FillWidth()
-					}).Grow(1)
-				})
-				passwordHint := "留空则尝试 ~/.xu/keys 私钥"
-				if editing {
-					passwordHint = "留空则使用已保存密码或私钥"
-				}
-				fieldColumn(c, "密码", func() {
-					ui.TextInput(c, &a.password).Label("密码（可留空）").
-						Placeholder(passwordHint).Password()
-				})
-
-				if editing {
-					ui.Text(c, "修改会立即保存到连接列表").
-						FontSize(9.5).TextColor(colMuted2).NoWrap()
-				} else {
-					ui.Checkbox(c, &a.saveProfile, "保存到连接列表")
-				}
-
-				ui.Box(c).FillWidth().Padding(9, 10).Radius(6).Background(colPanelTop).
-					Border(1, colLine).Children(func() {
-					ui.Row(c).Gap(6).AlignItems(ui.Start).Children(func() {
-						iconEl(c, iconShield, 12, colGreen)
-						ui.Text(c, "首次连接会核对主机密钥指纹；密钥变化会立即阻断连接。").
-							FontSize(9).TextColor(colMuted2).LineHeight(1.45)
+					fieldColumn(c, "名称", func() {
+						ui.TextInput(c, &a.profileName).Label("名称").
+							Placeholder("可选，留空则用 用户名@主机")
 					})
-				})
-
-				if a.connectErr != "" {
-					ui.Box(c).FillWidth().Padding(8, 10).Radius(5).
-						Background(colRed.Alpha(0.07)).Border(1, colRed.Alpha(0.18)).Children(func() {
-						ui.Text(c, a.connectErr).FontSize(10).TextColor(colRed).LineHeight(1.45)
+					ui.Row(c).Gap(10).AlignItems(ui.End).Children(func() {
+						fieldColumn(c, "主机", func() {
+							ui.TextInput(c, &a.host).Label("主机").
+								Placeholder("192.168.1.10").AutoFocus()
+						}).Grow(1)
+						fieldColumn(c, "端口", func() {
+							ui.TextInput(c, &a.port).Label("端口").Placeholder("22")
+						}).Width(96)
 					})
-				}
+					ui.Row(c).Gap(10).AlignItems(ui.End).Children(func() {
+						fieldColumn(c, "用户名", func() {
+							ui.TextInput(c, &a.username).Label("用户名").Placeholder("root")
+						}).Grow(1)
+						fieldColumn(c, "分组", func() {
+							ui.Select(c, &a.groupChoice, a.groupOptions()).FillWidth()
+						}).Grow(1)
+					})
+					passwordHint := "留空则尝试 ~/.xu/keys 私钥"
+					if editing {
+						passwordHint = "留空则使用已保存密码或私钥"
+					}
+					fieldColumn(c, "密码", func() {
+						ui.TextInput(c, &a.password).Label("密码（可留空）").
+							Placeholder(passwordHint).Password()
+					})
+
+					if editing {
+						ui.Text(c, "修改会立即保存到连接列表").
+							FontSize(9.5).TextColor(colMuted2).NoWrap()
+					} else {
+						ui.Checkbox(c, &a.saveProfile, "保存到连接列表")
+					}
+
+					ui.Box(c).FillWidth().Padding(9, 10).Radius(6).Background(colPanelTop).
+						Border(1, colLine).Children(func() {
+						ui.Row(c).Gap(6).AlignItems(ui.Start).Children(func() {
+							iconEl(c, iconShield, 12, colGreen)
+							ui.Text(c, "首次连接会核对主机密钥指纹；密钥变化会立即阻断连接。").
+								FontSize(9).TextColor(colMuted2).LineHeight(1.45)
+						})
+					})
+
+					if a.connectErr != "" {
+						ui.Box(c).FillWidth().Padding(8, 10).Radius(5).
+							Background(colRed.Alpha(0.07)).Border(1, colRed.Alpha(0.18)).Children(func() {
+							ui.Text(c, a.connectErr).FontSize(10).TextColor(colRed).LineHeight(1.45)
+						})
+					}
 				})
 			})
 

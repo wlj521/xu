@@ -619,7 +619,9 @@ func (a *App) connectSavedProfile(p store.Profile) {
 	a.username = p.Username
 	a.password = ""
 	a.groupChoice = a.groupNameByID(p.GroupID)
-	a.saveProfile = true
+	// The profile already exists: connecting it again must not rewrite the
+	// database row or the saved password on every handshake.
+	a.saveProfile = false
 	a.connectErr = ""
 	a.status = ""
 	a.formOpen = false
