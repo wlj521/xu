@@ -102,6 +102,22 @@ func TestTopTabsSwitchAndCloseSessions(t *testing.T) {
 	}
 }
 
+func TestTabStripHasNoBulkCloseAction(t *testing.T) {
+	a := New()
+	a.stop()
+	a.terms = []*termSession{{ID: 1, Title: "alpha"}}
+	a.syncTabs()
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	if _, ok := tt.Find("关闭当前标签页"); ok {
+		t.Fatalf("the right-side tab close action must be gone; texts = %q", tt.Texts())
+	}
+	if _, ok := tt.Find("关闭 alpha"); !ok {
+		t.Fatalf("the tab's own close action is missing; texts = %q", tt.Texts())
+	}
+}
+
 func TestClosingBackgroundTabKeepsFrontTab(t *testing.T) {
 	a := New()
 	a.stop()

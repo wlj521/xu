@@ -61,7 +61,7 @@ var (
 	iconEraser       = svgIcon(`<path d="m4 15 5 5h11M20 10 10 20l-6-6L14 4l6 6Z"/>`)
 	iconPower        = svgIcon(`<path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/>`)
 	iconConnections  = svgIcon(`<path d="M3.5 7.5h6l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 19V7.5Z"/><path d="M8 13h8M8 16h5"/>`)
-	iconManager      = svgIcon(`<path d="M5 4.4h11.2a2 2 0 0 1 2 2V20H7a2 2 0 0 1-2-2V4.4Z"/><path d="M5 17.6a2 2 0 0 1 2-2h11.2"/><path d="M8.8 8h5.6M8.8 11.2h4.2"/>`)
+	iconManager      = svgIcon(`<path d="M3.5 8.2h5.9l2 2h9.1v8a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2V8.2Z"/><path d="M3.5 8.2V6.4a1.7 1.7 0 0 1 1.7-1.7h4.4l2 2h6.7a1.7 1.7 0 0 1 1.7 1.7v1.8"/><path d="M7.6 12.6h7.8M7.6 15.6h5.2"/>`)
 )
 
 func iconEl(c *ui.Context, s *ui.SVG, size float32, color ui.Color) ui.Element {
