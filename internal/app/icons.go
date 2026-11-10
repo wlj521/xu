@@ -57,7 +57,6 @@ var (
 	iconEdit         = svgIcon(`<path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m13.5 8.5 3 3"/>`)
 	iconTrash        = svgIcon(`<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/>`)
 	iconCheck        = svgIcon(`<path d="m4.5 12.5 5 5L19.5 7"/>`)
-	iconSealXu       = svgIcon(`<path d="M12 3.2v3"/><path d="M6.9 6.3h10.2"/><path d="M6.9 6.3v14.1"/><path d="M8.8 9.5h6.4"/><path d="M9 15.2h6"/><path d="m9.1 9.5 2 2.9M14.9 9.5l-2 2.9M9.1 15.2l2-2.9M14.9 15.2l-2-2.9"/><circle cx="12" cy="12.35" r="1.35"/><path d="M12 13.7v6.7"/>`)
 	iconEraser       = svgIcon(`<path d="m4 15 5 5h11M20 10 10 20l-6-6L14 4l6 6Z"/>`)
 	iconPower        = svgIcon(`<path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/>`)
 	iconConnections  = svgIcon(`<path d="M3.5 7.5h6l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 19V7.5Z"/><path d="M8 13h8M8 16h5"/>`)

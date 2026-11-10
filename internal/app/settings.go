@@ -119,10 +119,7 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 					ui.Box(c).FillWidth().Height(1).Background(colLine).
 						Margin(0, 0, 12, 0)
 					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Box(c).Size(24, 24).Radius(7).Gradient(colCyan, colBlue, 135).
-							Center().Children(func() {
-							ui.Text(c, "X").FontSize(11).FontWeight(800).TextColor(colAccentText)
-						})
+						ui.Image(c, titleIcon).Size(24, 24).Fit(ui.Contain).Shrink(0)
 						ui.Column(c).Grow(1).Gap(1).Children(func() {
 							ui.Text(c, "Xu 0.1.0").FontSize(9.2).Font("Cascadia Code").
 								TextColor(colText2)
@@ -370,9 +367,7 @@ func (a *App) settingsConnection(c *ui.Context, t *ui.Theme) {
 func (a *App) settingsAbout(c *ui.Context, t *ui.Theme) {
 	ui.Row(c).FillWidth().Padding(12, 14).Gap(12).Radius(9).
 		Background(colPanel2).Border(1, colLine).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(38, 38).Radius(10).Gradient(colCyan, colBlue, 135).Center().Children(func() {
-			ui.Text(c, "X").FontSize(18).FontWeight(800).LetterSpacing(-0.6).TextColor(colAccentText)
-		})
+		ui.Image(c, titleIcon).Size(38, 38).Fit(ui.Contain).Shrink(0)
 		ui.Column(c).Grow(1).Gap(2).Children(func() {
 			ui.Text(c, "Xu 0.1.0").FontSize(14.5).FontWeight(650).TextColor(colText)
 			ui.Text(c, "SSH Workspace · mygo + Ghostty VT").FontSize(10.5).
@@ -654,20 +649,20 @@ func (a *App) termThemes() (*terminal.Theme, *terminal.Theme) {
 
 	dark := terminal.DarkTheme()
 	dark.Background = colTermBg
-	dark.Foreground = colText
+	dark.Foreground = ui.Hex("#BCBEC4")
 	dark.Cursor = colCyan
 	dark.CursorText = colAccentText
-	dark.Selection = colAccentSoft
+	dark.Selection = ui.Hex("#214283")
 	dark.SelectionText = colText
 	dark.Search = colAmber
 	dark.SearchText = colInk
 	dark.SearchSelected = colRed
 	dark.SearchSelectedText = colInk
 	dark.Palette = [16]ui.Color{
-		ui.Hex("#06090E"), ui.Hex("#FF7585"), ui.Hex("#3DDC97"), ui.Hex("#F4B860"),
-		ui.Hex("#4D8DFF"), ui.Hex("#B09BFF"), ui.Hex("#4CD7E8"), ui.Hex("#E9EEF7"),
-		ui.Hex("#4D5A6E"), ui.Hex("#FF9AA6"), ui.Hex("#72E7B3"), ui.Hex("#F7CA82"),
-		ui.Hex("#7FAEFF"), ui.Hex("#C7B8FF"), ui.Hex("#7FE3F0"), ui.Hex("#F5F8FD"),
+		ui.Hex("#000000"), ui.Hex("#CD3131"), ui.Hex("#0DBC79"), ui.Hex("#E5E510"),
+		ui.Hex("#2472C8"), ui.Hex("#BC3FBC"), ui.Hex("#11A8CD"), ui.Hex("#E5E5E5"),
+		ui.Hex("#666666"), ui.Hex("#F14C4C"), ui.Hex("#23D18B"), ui.Hex("#F5F543"),
+		ui.Hex("#3B8EEA"), ui.Hex("#D670D6"), ui.Hex("#29B8DB"), ui.Hex("#F0F0F0"),
 	}
 	if !a.settings.FindHighlight {
 		light.Search = light.Background

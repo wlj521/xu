@@ -25,11 +25,7 @@ func (a *App) titleBar(c *ui.Context, t *ui.Theme, bar ui.TitleBar) {
 func (a *App) titleBrand(c *ui.Context, t *ui.Theme, h float32) {
 	ui.Row(c).Width(monitorWidth(c)).Height(h).Padding(0, 14).Gap(10).AlignItems(ui.Center).
 		BorderWidth(0, 1, 0, 0).BorderColor(colLine).DragWindow().Children(func() {
-		ui.Box(c).Width(27).Height(27).Radius(8).
-			Gradient(ui.Hex("#B2433A"), ui.Hex("#6E1A1D"), 135).
-			Border(1, ui.Hex("#F5E8D2").Alpha(0.24)).Center().Children(func() {
-			iconEl(c, iconSealXu, 18, ui.Hex("#F5E8D2"))
-		})
+		ui.Image(c, titleIcon).Size(27, 27).Fit(ui.Contain).Shrink(0)
 		ui.Column(c).Gap(1).Children(func() {
 			ui.Text(c, "Xu").FontSize(13).FontWeight(650).LetterSpacing(0.2).TextColor(colText).NoWrap()
 			ui.Text(c, "SSH 工作台").FontSize(7.5).FontWeight(650).

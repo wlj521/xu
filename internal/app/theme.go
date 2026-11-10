@@ -7,9 +7,9 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// The palette follows design/xu-redesign.html ("Switchboard"): graphite and
-// porcelain surfaces, hairline borders, square status LEDs and one ultramarine
-// accent. Status colours are reserved for success / warning / error.
+// Light mode keeps the porcelain "Switchboard" surfaces. Dark mode follows
+// JetBrains' new UI hierarchy: charcoal panels, quiet borders and a softer,
+// familiar terminal palette. Status colours stay reserved for their meaning.
 var (
 	colBg             ui.Color
 	colPanelTop       ui.Color
@@ -50,39 +50,39 @@ var (
 
 func setPalette(dark bool) {
 	if dark {
-		colBg = ui.Hex("#070A10")
-		colPanelTop = ui.Hex("#0A0E16")
-		colPanel = ui.Hex("#0D121B")
-		colPanelDeep = ui.Hex("#0D121B")
-		colPanel2 = ui.Hex("#121925")
-		colCard = ui.Hex("#0D121B")
-		colCardTop = ui.Hex("#0D121B")
-		colLine = ui.RGBA(255, 255, 255, 0.065)
-		colLine2 = ui.RGBA(255, 255, 255, 0.105)
-		colText = ui.Hex("#E9EEF7")
-		colText2 = ui.Hex("#A9B5C7")
-		colMuted = ui.Hex("#76839A")
-		colMuted2 = ui.Hex("#4D5A6E")
+		colBg = ui.Hex("#18191C")
+		colPanelTop = ui.Hex("#26282C")
+		colPanel = ui.Hex("#2B2D30")
+		colPanelDeep = ui.Hex("#1E1F22")
+		colPanel2 = ui.Hex("#313338")
+		colCard = ui.Hex("#2B2D30")
+		colCardTop = ui.Hex("#2B2D30")
+		colLine = ui.Hex("#34373C")
+		colLine2 = ui.Hex("#4A4D53")
+		colText = ui.Hex("#DFE1E5")
+		colText2 = ui.Hex("#BCBEC4")
+		colMuted = ui.Hex("#8C8F94")
+		colMuted2 = ui.Hex("#6F737A")
 		colCyan = ui.Hex("#4D8DFF")
-		colViolet = ui.Hex("#B09BFF")
-		colGreen = ui.Hex("#3DDC97")
-		colAmber = ui.Hex("#F4B860")
-		colRed = ui.Hex("#FF7585")
-		colBlue = ui.Hex("#4CD7E8")
-		colTrack = ui.RGBA(255, 255, 255, 0.075)
-		colInk = ui.Hex("#06090E")
-		colTermTop = ui.Hex("#06090E")
-		colTermBg = ui.Hex("#06090E")
-		colTermLine = ui.RGBA(255, 255, 255, 0.06)
-		colTreeBg = ui.Hex("#0D121B")
-		colFileLink = ui.Hex("#B09BFF")
-		colFilePerm = ui.Hex("#84B4FF")
+		colViolet = ui.Hex("#B49BD8")
+		colGreen = ui.Hex("#6AAB73")
+		colAmber = ui.Hex("#CFA85A")
+		colRed = ui.Hex("#E06C75")
+		colBlue = ui.Hex("#4C9CFF")
+		colTrack = ui.RGBA(255, 255, 255, 0.08)
+		colInk = ui.Hex("#1E1F22")
+		colTermTop = ui.Hex("#26282C")
+		colTermBg = ui.Hex("#1E1F22")
+		colTermLine = ui.Hex("#34373C")
+		colTreeBg = ui.Hex("#1E1F22")
+		colFileLink = ui.Hex("#9CB7E5")
+		colFilePerm = ui.Hex("#7EA7D8")
 		colAccentText = ui.Hex("#FFFFFF")
-		colSurfaceHover = ui.Hex("#182131")
-		colSurfacePressed = ui.Hex("#1E293B")
+		colSurfaceHover = ui.Hex("#2E3035")
+		colSurfacePressed = ui.Hex("#35383D")
 		colAccentHover = ui.Hex("#6BA3FF")
 		colAccentPressed = ui.Hex("#3C7BF0")
-		colScrollbar = ui.RGBA(255, 255, 255, 0.12)
+		colScrollbar = ui.RGBA(255, 255, 255, 0.18)
 		return
 	}
 

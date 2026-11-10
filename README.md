@@ -143,7 +143,7 @@ Remove-Item "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache_*.db" -Force
 Start-Process explorer.exe
 ```
 
-程序内部标题栏左侧的 `Xu` 品牌标记是 UI 元素，不是 exe 图标；exe/资源管理器/任务栏图标使用嵌入的“小篆序”图标。
+程序内部标题栏左侧的 `Xu` 品牌标记直接复用同一张应用图标源图，与 exe、资源管理器、任务栏保持完全一致。
 
 如果 PowerShell 阻止脚本执行：
 
@@ -215,6 +215,7 @@ internal/bundle/           单文件版 DLL 嵌入与首次运行释放
 build-local.ps1            单文件免安装包构建脚本
 test-local.ps1             测试 + vet
 resources/icon.png         小篆「序」应用图标
+design/icon/               图标源文件、PNG 与多尺寸 ICO
 mygo.json                  应用名称、版本、输出目录
 ```
 
