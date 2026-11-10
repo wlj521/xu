@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -17,35 +20,57 @@ import (
 type Process struct {
 	Name string
 	RSS  uint64
+	CPU  float64
+}
+
+// Disk is one mounted filesystem.
+type Disk struct {
+	Mount string
+	Used  uint64
+	Total uint64
+}
+
+// Interface is one network interface's counters and the rates derived from
+// the previous sample.
+type Interface struct {
+	Name    string
+	RxRate  float64
+	TxRate  float64
+	RxBytes uint64
+	TxBytes uint64
 }
 
 type Sample struct {
-	At        time.Time
-	CPU       float64
-	MemUsed   uint64
-	MemTotal  uint64
-	SwapUsed  uint64
-	SwapTotal uint64
-	DiskUsed  uint64
-	DiskTotal uint64
-	RxRate    float64
-	TxRate    float64
-	Load1     float64
-	Load5     float64
-	Load15    float64
-	CPUs      int
-	OS        string
-	Kernel    string
-	Arch      string
-	UptimeSec uint64
-	Processes []Process
+	At         time.Time
+	CPU        float64
+	MemUsed    uint64
+	MemTotal   uint64
+	SwapUsed   uint64
+	SwapTotal  uint64
+	DiskUsed   uint64
+	DiskTotal  uint64
+	Disks      []Disk
+	Interfaces []Interface
+	RxRate     float64 // all interfaces, except loopback
+	TxRate     float64
+	LatencyMs  float64 // SSH round trip, as of this sample
+	Load1      float64
+	Load5      float64
+	Load15     float64
+	CPUs       int
+	OS         string
+	Kernel     string
+	Arch       string
+	UptimeSec  uint64
+	Processes  []Process
 }
 
 type Collector struct {
-	sess   *ssh.Session
-	cancel context.CancelFunc
-	done   chan struct{}
-	once   sync.Once
+	sess    *ssh.Session
+	cancel  context.CancelFunc
+	done    chan struct{}
+	once    sync.Once
+	latency atomic.Uint64 // math.Float64bits of the last RTT in ms
 }
 
 func Start(parent context.Context, client *ssh.Client, interval time.Duration, onSample func(Sample), onErr func(error)) (*Collector, error) {
@@ -74,6 +99,7 @@ while :; do
   head -n 1 /proc/stat 2>/dev/null
   grep -E '^(MemTotal|MemAvailable|MemFree|Buffers|Cached|SwapTotal|SwapFree):' /proc/meminfo 2>/dev/null
   echo "@@DF $(df -P -k / 2>/dev/null | tail -n 1)"
+  df -P -k 2>/dev/null | tail -n +2 | grep -v '^none[[:space:]]' | head -n 8 | sed 's/^/@@DFS /'
   cat /proc/net/dev 2>/dev/null
   echo "@@LOAD $(cat /proc/loadavg 2>/dev/null)"
   echo "@@NPROC $(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
@@ -81,7 +107,7 @@ while :; do
   echo "@@KERNEL $(uname -sr 2>/dev/null)"
   echo "@@ARCH $(uname -m 2>/dev/null)"
   echo "@@UPTIME $(cut -d. -f1 /proc/uptime 2>/dev/null)"
-  echo "@@PS $(ps -eo comm=,rss= --sort=-rss 2>/dev/null | head -4 | tr '\n' ';')"
+  echo "@@PS $(ps -eo comm=,%%cpu=,rss= --sort=-rss 2>/dev/null | head -4 | tr '\n' ';')"
   echo "@@XU_END"
   sleep %d
 done`, seconds)
@@ -94,7 +120,32 @@ done`, seconds)
 	ctx, cancel := context.WithCancel(parent)
 	c := &Collector{sess: sess, cancel: cancel, done: make(chan struct{})}
 	go c.read(ctx, out, onSample, onErr)
+	go c.ping(ctx, client, interval)
 	return c, nil
+}
+
+// ping measures the SSH round trip with a keepalive-style global request,
+// the way FinalShell shows a local latency. The latest value rides on the
+// next sample.
+func (c *Collector) ping(ctx context.Context, client *ssh.Client, interval time.Duration) {
+	measure := func() {
+		start := time.Now()
+		if _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); err == nil {
+			ms := float64(time.Since(start).Microseconds()) / 1000
+			c.latency.Store(math.Float64bits(ms))
+		}
+	}
+	measure()
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			measure()
+		}
+	}
 }
 
 func (c *Collector) Stop() {
@@ -131,6 +182,7 @@ func (c *Collector) read(ctx context.Context, r io.Reader, onSample func(Sample)
 					}
 				} else {
 					prev = &cur
+					sample.LatencyMs = math.Float64frombits(c.latency.Load())
 					if onSample != nil {
 						onSample(sample)
 					}
@@ -161,6 +213,8 @@ type raw struct {
 	cpuIdle  uint64
 	rx       uint64
 	tx       uint64
+	ifaceRx  map[string]uint64
+	ifaceTx  map[string]uint64
 }
 
 func parse(lines []string, prev *raw, at time.Time) (Sample, raw, error) {
@@ -221,6 +275,21 @@ func parse(lines []string, prev *raw, at time.Time) (Sample, raw, error) {
 				}
 			}
 
+		case strings.HasPrefix(line, "@@DFS "):
+			// Filesystem 1024-blocks Used Available Capacity Mounted on
+			fields := strings.Fields(strings.TrimPrefix(line, "@@DFS "))
+			if len(fields) >= 6 {
+				total, err1 := strconv.ParseUint(fields[1], 10, 64)
+				used, err2 := strconv.ParseUint(fields[2], 10, 64)
+				if err1 == nil && err2 == nil && total > 0 {
+					s.Disks = append(s.Disks, Disk{
+						Mount: fields[5],
+						Used:  used * 1024,
+						Total: total * 1024,
+					})
+				}
+			}
+
 		case strings.HasPrefix(line, "@@LOAD "):
 			fields := strings.Fields(strings.TrimPrefix(line, "@@LOAD "))
 			if len(fields) >= 3 {
@@ -253,15 +322,17 @@ func parse(lines []string, prev *raw, at time.Time) (Sample, raw, error) {
 			rest := strings.TrimSpace(strings.TrimPrefix(line, "@@PS "))
 			for _, entry := range strings.Split(rest, ";") {
 				fields := strings.Fields(entry)
-				if len(fields) < 2 {
+				if len(fields) < 3 {
 					continue
 				}
 				rss, err := strconv.ParseUint(fields[len(fields)-1], 10, 64)
 				if err != nil {
 					continue
 				}
+				cpu, _ := strconv.ParseFloat(fields[len(fields)-2], 64)
 				s.Processes = append(s.Processes, Process{
-					Name: strings.Join(fields[:len(fields)-1], " "),
+					Name: strings.Join(fields[:len(fields)-2], " "),
+					CPU:  cpu,
 					RSS:  rss * 1024,
 				})
 			}
@@ -282,6 +353,12 @@ func parse(lines []string, prev *raw, at time.Time) (Sample, raw, error) {
 				if err1 == nil && err2 == nil {
 					cur.rx += rx
 					cur.tx += tx
+					if cur.ifaceRx == nil {
+						cur.ifaceRx = map[string]uint64{}
+						cur.ifaceTx = map[string]uint64{}
+					}
+					cur.ifaceRx[iface] += rx
+					cur.ifaceTx[iface] += tx
 				}
 			}
 		}
@@ -313,13 +390,14 @@ func parse(lines []string, prev *raw, at time.Time) (Sample, raw, error) {
 		s.OS = "Linux"
 	}
 
+	secs := 0.0
 	if prev != nil {
 		if cur.cpuTotal > prev.cpuTotal {
 			dt := cur.cpuTotal - prev.cpuTotal
 			di := cur.cpuIdle - prev.cpuIdle
 			s.CPU = clamp(100*(1-float64(di)/float64(dt)), 0, 100)
 		}
-		secs := at.Sub(prev.at).Seconds()
+		secs = at.Sub(prev.at).Seconds()
 		if secs > 0 {
 			if cur.rx >= prev.rx {
 				s.RxRate = float64(cur.rx-prev.rx) / secs
@@ -328,6 +406,35 @@ func parse(lines []string, prev *raw, at time.Time) (Sample, raw, error) {
 				s.TxRate = float64(cur.tx-prev.tx) / secs
 			}
 		}
+	}
+
+	names := make([]string, 0, len(cur.ifaceRx))
+	for name := range cur.ifaceRx {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		ti := cur.ifaceRx[names[i]] + cur.ifaceTx[names[i]]
+		tj := cur.ifaceRx[names[j]] + cur.ifaceTx[names[j]]
+		if ti != tj {
+			return ti > tj
+		}
+		return names[i] < names[j]
+	})
+	for _, name := range names {
+		in := Interface{
+			Name:    name,
+			RxBytes: cur.ifaceRx[name],
+			TxBytes: cur.ifaceTx[name],
+		}
+		if prev != nil && secs > 0 {
+			if v, ok := prev.ifaceRx[name]; ok && in.RxBytes >= v {
+				in.RxRate = float64(in.RxBytes-v) / secs
+			}
+			if v, ok := prev.ifaceTx[name]; ok && in.TxBytes >= v {
+				in.TxRate = float64(in.TxBytes-v) / secs
+			}
+		}
+		s.Interfaces = append(s.Interfaces, in)
 	}
 
 	return s, cur, nil

@@ -114,6 +114,7 @@ type App struct {
 
 	monitorOpen bool
 	monitors    map[int64]*monitorState
+	netIface    map[int64]string // chosen network interface per session ("" = all)
 
 	forwardOpen   bool
 	forwardKind   int
@@ -186,6 +187,7 @@ func New() *App {
 		fileSplitPct:       50,
 		browsers:           make(map[int64]*fileBrowser),
 		monitors:           make(map[int64]*monitorState),
+		netIface:           make(map[int64]string),
 		forwardListen:      "127.0.0.1:8080",
 		forwardSave:        true,
 		forwards:           make(map[int64][]*forwardEntry),
@@ -861,6 +863,7 @@ func (a *App) closeTermSession(ts *termSession) {
 	}
 	a.stopMonitor(ts.ID)
 	a.stopForwards(ts.ID)
+	delete(a.netIface, ts.ID)
 	if b := a.browsers[ts.ID]; b != nil {
 		b.Close()
 		delete(a.browsers, ts.ID)
