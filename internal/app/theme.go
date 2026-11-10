@@ -86,39 +86,39 @@ func setPalette(dark bool) {
 		return
 	}
 
-	colBg = ui.Hex("#E9EDF4")
-	colPanelTop = ui.Hex("#F4F7FB")
+	colBg = ui.Hex("#F2F3F5")
+	colPanelTop = ui.Hex("#F7F8FA")
 	colPanel = ui.Hex("#FFFFFF")
 	colPanelDeep = ui.Hex("#FFFFFF")
-	colPanel2 = ui.Hex("#FFFFFF")
+	colPanel2 = ui.Hex("#F7F8FA")
 	colCard = ui.Hex("#FFFFFF")
 	colCardTop = ui.Hex("#FFFFFF")
-	colLine = ui.Hex("#E4E9F1")
-	colLine2 = ui.Hex("#D4DCE8")
-	colText = ui.Hex("#151D2E")
-	colText2 = ui.Hex("#44506A")
-	colMuted = ui.Hex("#7C889C")
-	colMuted2 = ui.Hex("#A3ADBE")
-	colCyan = ui.Hex("#2F6FEB")
+	colLine = ui.Hex("#E1E3E6")
+	colLine2 = ui.Hex("#C9CCD1")
+	colText = ui.Hex("#1E1F22")
+	colText2 = ui.Hex("#3C3F44")
+	colMuted = ui.Hex("#6F737A")
+	colMuted2 = ui.Hex("#9A9DA3")
+	colCyan = ui.Hex("#3574F0")
 	colViolet = ui.Hex("#7C5CF0")
-	colGreen = ui.Hex("#0F9D6B")
-	colAmber = ui.Hex("#B7791F")
-	colRed = ui.Hex("#D94357")
-	colBlue = ui.Hex("#0891B2")
-	colTrack = ui.RGBA(21, 29, 46, 0.08)
+	colGreen = ui.Hex("#1E8E3E")
+	colAmber = ui.Hex("#A66A00")
+	colRed = ui.Hex("#C7222D")
+	colBlue = ui.Hex("#0E7EB8")
+	colTrack = ui.RGBA(30, 31, 34, 0.08)
 	colInk = ui.Hex("#FFFFFF")
-	colTermTop = ui.Hex("#F8FAFC")
-	colTermBg = ui.Hex("#F8FAFC")
-	colTermLine = ui.Hex("#E9EDF3")
-	colTreeBg = ui.Hex("#F4F7FB")
+	colTermTop = ui.Hex("#F7F8FA")
+	colTermBg = ui.Hex("#FFFFFF")
+	colTermLine = ui.Hex("#E4E6E9")
+	colTreeBg = ui.Hex("#FFFFFF")
 	colFileLink = ui.Hex("#7C5CF0")
-	colFilePerm = ui.Hex("#1D5FA8")
+	colFilePerm = ui.Hex("#1A67A8")
 	colAccentText = ui.Hex("#FFFFFF")
-	colSurfaceHover = ui.Hex("#EFF3F9")
-	colSurfacePressed = ui.Hex("#E7EDF6")
-	colAccentHover = ui.Hex("#2B64D9")
-	colAccentPressed = ui.Hex("#2556C4")
-	colScrollbar = ui.Hex("#CBD5E3")
+	colSurfaceHover = ui.Hex("#EEF0F3")
+	colSurfacePressed = ui.Hex("#E5E8EC")
+	colAccentHover = ui.Hex("#2A63D4")
+	colAccentPressed = ui.Hex("#2456BC")
+	colScrollbar = ui.Hex("#C8CCD2")
 }
 
 func (a *App) uiDark() bool {
@@ -251,8 +251,8 @@ func accentPalette(dark bool, index int) (ui.Color, ui.Color, ui.Color, ui.Color
 		return ui.Hex("#EA580C"), ui.Hex("#D97706"), ui.Hex("#C2410C"), ui.Hex("#9A3412"),
 			ui.Hex("#EA580C").Alpha(0.09), ui.Hex("#EA580C").Alpha(0.35)
 	default: // blue
-		return ui.Hex("#2F6FEB"), ui.Hex("#0EA5E9"), ui.Hex("#2B64D9"), ui.Hex("#2556C4"),
-			ui.Hex("#2F6FEB").Alpha(0.09), ui.Hex("#2F6FEB").Alpha(0.35)
+		return ui.Hex("#3574F0"), ui.Hex("#0B7FBF"), ui.Hex("#2A63D4"), ui.Hex("#2456BC"),
+			ui.Hex("#3574F0").Alpha(0.09), ui.Hex("#3574F0").Alpha(0.35)
 	}
 }
 

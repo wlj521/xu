@@ -440,6 +440,8 @@ func bottomFileColumns() []ui.TableColumn {
 // normal text, instead of the bright accent fill used by primary controls.
 func fileTableTheme(t *ui.Theme) *ui.Theme {
 	tableTheme := *t
+	tableTheme.Background = colTreeBg
+	tableTheme.Surface = colTreeBg
 	tableTheme.Accent = colAccentSoft
 	tableTheme.AccentText = colText
 	tableTheme.Focus = colAccentLine
@@ -476,7 +478,7 @@ func fileKind(f os.FileInfo) string {
 func fileVisual(f os.FileInfo) (*ui.SVG, ui.Color) {
 	switch {
 	case f.IsDir():
-		return iconFileFolder, colAmber
+		return iconFolder, colCyan
 	case f.Mode()&os.ModeSymlink != 0:
 		return iconLink, colFileLink
 	}
@@ -522,13 +524,6 @@ func fileVisual(f os.FileInfo) (*ui.SVG, ui.Color) {
 
 func fileTypeIcon(c *ui.Context, f os.FileInfo) ui.Element {
 	icon, color := fileVisual(f)
-	if f.IsDir() {
-		iconBox := ui.Box(c).Size(22, 22).Shrink(0).Center()
-		iconBox.Children(func() {
-			ui.Image(c, icon).Size(18, 18).Fit(ui.Contain)
-		})
-		return iconBox
-	}
 	tile := ui.Box(c).Size(22, 22).Shrink(0).Radius(6).
 		Background(color.Alpha(0.11)).Center()
 	tile.Children(func() {

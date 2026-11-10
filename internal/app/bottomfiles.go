@@ -36,7 +36,7 @@ func (a *App) bottomFileContent(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 }
 
 func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	ui.Column(c).FillWidth().FillHeight().Children(func() {
+	ui.Column(c).FillWidth().FillHeight().Background(colTreeBg).Children(func() {
 		wide := a.dockFileTableWide(c)
 		cols := bottomFileColumns()
 		if wide {
@@ -336,9 +336,9 @@ func (a *App) dirTreeRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 			row.Background(t.SurfaceHover)
 		}
 		row.Children(func() {
-			ui.Image(c, iconFileFolder).Size(19, 19).Fit(ui.Contain).Shrink(0)
+			iconEl(c, iconFolder, 17, condColor(active, colCyan, colMuted))
 			ui.Text(c, shortLabel(label, 22)).FontSize(13).Font("Cascadia Code").
-				TextColor(colText2).NoWrap()
+				TextColor(condColor(active, colText, colText2)).NoWrap()
 		})
 		if row.Clicked() {
 			if local {

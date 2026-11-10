@@ -14,7 +14,6 @@ var (
 	iconServer       = svgIcon(`<rect x="3.5" y="4" width="17" height="6" rx="1.6"/><rect x="3.5" y="14" width="17" height="6" rx="1.6"/><path d="M7 7h.01M7 17h.01M11 7h5M11 17h5"/>`)
 	iconTerm         = svgIcon(`<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="m7 9 3 3-3 3M12.5 15H17"/>`)
 	iconFolder       = svgIcon(`<path d="M3.1 8h5.8l2 2h9.9l-1.3 7.8a2 2 0 0 1-2 1.7H5.2a2 2 0 0 1-2-1.8L2.4 9.2A1.4 1.4 0 0 1 3.1 8Z"/><path d="M3.1 8V6.2a1.7 1.7 0 0 1 1.7-1.7h4.4l2 2h6.9a1.7 1.7 0 0 1 1.7 1.7V8"/>`)
-	iconFileFolder   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2.7 7.2C2.7 6.1 3.6 5.2 4.7 5.2h5.1l2.1 2.1h7.4c1.1 0 2 .9 2 2v8c0 1.1-.9 2-2 2H4.7c-1.1 0-2-.9-2-2V7.2Z" fill="#F8CC5B" stroke="#D8A53A" stroke-width="1.2" stroke-linejoin="round"/><path d="M2.7 9.15h18.6" fill="none" stroke="#D8A53A" stroke-width="1.1"/><path d="M4.9 6.45h4.1" fill="none" stroke="#FFE39B" stroke-width="1.1" stroke-linecap="round"/></svg>`))
 	iconFile         = fileDocIcon("")
 	iconFileText     = fileDocIcon(`<path d="M8.3 12.4h7.2M8.3 15.1h7.2M8.3 17.8h4.7"/>`)
 	iconFileScript   = fileDocIcon(`<path d="m8.5 12.3 2.2 2.1-2.2 2.1M12.6 16.5h3.2"/>`)

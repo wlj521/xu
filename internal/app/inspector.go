@@ -58,11 +58,12 @@ func (a *App) inspectorMonitorHead(c *ui.Context, t *ui.Theme) {
 		host = p.Host
 	}
 
-	// One 34px row, the same height as the tab strip next to it, so the two
-	// bottom hairlines meet. The title is gone: the address already says
-	// which server this monitor belongs to.
-	ui.Row(c).Height(34).Shrink(0).Padding(0, 9).Gap(7).AlignItems(ui.Center).
-		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
+	// The same surface and height as the tab strip next to it, so the top
+	// chrome reads as one continuous band and both bottom hairlines meet.
+	// The title is gone: the address already says which server this
+	// monitor belongs to.
+	ui.Row(c).Height(tabStripHeight).Shrink(0).Padding(0, 9).Gap(7).AlignItems(ui.Center).
+		Background(colPanelTop).BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
 		if host != "" {
 			// The server's address stays visible even when no metrics arrive
 			// yet, and one click copies it.

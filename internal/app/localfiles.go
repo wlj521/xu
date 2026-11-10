@@ -178,7 +178,7 @@ func (a *App) localFileTree(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 // localFileTable is the local counterpart of bottomFileTable: the same
 // columns, rows and click behaviour as the remote file list.
 func (a *App) localFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	ui.Column(c).FillWidth().FillHeight().Children(func() {
+	ui.Column(c).FillWidth().FillHeight().Background(colTreeBg).Children(func() {
 		wide := a.dockFileTableWide(c)
 		cols := bottomFileColumns()
 		if wide {

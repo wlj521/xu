@@ -78,7 +78,7 @@ func TestLightThemeApplies(t *testing.T) {
 	if theme == nil || theme.Dark {
 		t.Fatalf("expected a light theme, got %+v", theme)
 	}
-	if colBg != ui.Hex("#E9EDF4") {
+	if colBg != ui.Hex("#F2F3F5") {
 		t.Fatalf("light palette was not applied: %v", colBg)
 	}
 }

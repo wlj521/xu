@@ -263,23 +263,23 @@ func (a *App) themeChoiceCard(c *ui.Context, t *ui.Theme, key, label string, mod
 			if kind == "system" {
 				thumb.Draw(func(p *ui.Painter, r ui.Rect) {
 					half := r.W / 2
-					p.Fill(ui.Rect{X: r.X, Y: r.Y, W: half, H: r.H}, ui.Hex("#0C1119"), 1)
-					p.Fill(ui.Rect{X: r.X + half, Y: r.Y, W: r.W - half, H: r.H}, ui.Hex("#F7F9FC"), 1)
+					p.Fill(ui.Rect{X: r.X, Y: r.Y, W: half, H: r.H}, ui.Hex("#1E1F22"), 1)
+					p.Fill(ui.Rect{X: r.X + half, Y: r.Y, W: r.W - half, H: r.H}, ui.Hex("#FFFFFF"), 1)
 				})
 			} else if kind == "dark" {
-				thumb.Background(ui.Hex("#0C1119")).Children(func() {
+				thumb.Background(ui.Hex("#1E1F22")).Children(func() {
 					ui.Column(c).Padding(6).Gap(3).Children(func() {
-						ui.Box(c).FillWidth().Height(8).Radius(2).Background(ui.Hex("#141C28"))
-						ui.Box(c).FillWidth().Height(8).Radius(2).Background(ui.Hex("#1A2433"))
-						ui.Box(c).Width(48).Height(8).Radius(2).Background(ui.Hex("#1C4F7A"))
+						ui.Box(c).FillWidth().Height(8).Radius(2).Background(ui.Hex("#26282C"))
+						ui.Box(c).FillWidth().Height(8).Radius(2).Background(ui.Hex("#2B2D30"))
+						ui.Box(c).Width(48).Height(8).Radius(2).Background(ui.Hex("#4D8DFF"))
 					})
 				})
 			} else {
-				thumb.Background(ui.Hex("#F7F9FC")).Children(func() {
+				thumb.Background(ui.Hex("#FFFFFF")).Children(func() {
 					ui.Column(c).Padding(6).Gap(3).Children(func() {
-						ui.Box(c).FillWidth().Height(8).Radius(2).Background(ui.Hex("#EEF2F8"))
-						ui.Box(c).FillWidth().Height(8).Radius(2).Background(ui.Hex("#DDE4EF"))
-						ui.Box(c).Width(48).Height(8).Radius(2).Background(ui.Hex("#6F8FBE"))
+						ui.Box(c).FillWidth().Height(8).Radius(2).Background(ui.Hex("#F2F3F5"))
+						ui.Box(c).FillWidth().Height(8).Radius(2).Background(ui.Hex("#E1E3E6"))
+						ui.Box(c).Width(48).Height(8).Radius(2).Background(ui.Hex("#9CB7E5"))
 					})
 				})
 			}
@@ -631,20 +631,20 @@ func copyOnSelect(display termDisplay) terminal.CopyOnSelect {
 func (a *App) termThemes() (*terminal.Theme, *terminal.Theme) {
 	light := terminal.LightTheme()
 	light.Background = colTermBg
-	light.Foreground = colText
+	light.Foreground = ui.Hex("#1E1F22")
 	light.Cursor = colCyan
 	light.CursorText = ui.Hex("#FFFFFF")
-	light.Selection = colAccentSoft
-	light.SelectionText = colText
-	light.Search = colAmber
-	light.SearchText = ui.Hex("#FFFFFF")
-	light.SearchSelected = colRed
-	light.SearchSelectedText = ui.Hex("#FFFFFF")
+	light.Selection = ui.Hex("#CCE0FF")
+	light.SelectionText = ui.Hex("#1E1F22")
+	light.Search = ui.Hex("#FFD37A")
+	light.SearchText = ui.Hex("#1E1F22")
+	light.SearchSelected = ui.Hex("#FF9DA6")
+	light.SearchSelectedText = ui.Hex("#1E1F22")
 	light.Palette = [16]ui.Color{
-		ui.Hex("#151D2E"), ui.Hex("#D94357"), ui.Hex("#0F9D6B"), ui.Hex("#B7791F"),
-		ui.Hex("#2F6FEB"), ui.Hex("#7C5CF0"), ui.Hex("#0891B2"), ui.Hex("#F8FAFC"),
-		ui.Hex("#7C889C"), ui.Hex("#E86A7B"), ui.Hex("#2BB985"), ui.Hex("#D79A3E"),
-		ui.Hex("#5C93F2"), ui.Hex("#9B7FF5"), ui.Hex("#2AA7C6"), ui.Hex("#151D2E"),
+		ui.Hex("#000000"), ui.Hex("#CD3131"), ui.Hex("#00BC00"), ui.Hex("#949800"),
+		ui.Hex("#0451A5"), ui.Hex("#BC05BC"), ui.Hex("#0598BC"), ui.Hex("#555555"),
+		ui.Hex("#666666"), ui.Hex("#CD3131"), ui.Hex("#14CE14"), ui.Hex("#B5BA00"),
+		ui.Hex("#0451A5"), ui.Hex("#BC05BC"), ui.Hex("#0598BC"), ui.Hex("#A5A5A5"),
 	}
 
 	dark := terminal.DarkTheme()

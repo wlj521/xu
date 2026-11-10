@@ -367,7 +367,7 @@ func TestFileVisualsByType(t *testing.T) {
 		mode os.FileMode
 		want *ui.SVG
 	}{
-		{"projects", true, 0, iconFileFolder},
+		{"projects", true, 0, iconFolder},
 		{"deploy.sh", false, 0, iconFileScript},
 		{"main.go", false, 0, iconFileCode},
 		{"app.env", false, 0, iconFileConfig},
