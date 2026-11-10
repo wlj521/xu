@@ -15,7 +15,7 @@ func TestDockTabsAndCollapse(t *testing.T) {
 
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
-	for _, want := range []string{"文件", "传输", "隧道", "命令", "本地", "名称"} {
+	for _, want := range []string{"文件", "传输", "隧道", "命令", "本地", "文件名"} {
 		if !tt.HasText(want) {
 			t.Fatalf("dock missing %q; texts = %q", want, tt.Texts())
 		}
@@ -26,7 +26,7 @@ func TestDockTabsAndCollapse(t *testing.T) {
 	if a.bottomFiles {
 		t.Fatal("dock should be collapsed")
 	}
-	if tt.HasText("名称") {
+	if tt.HasText("文件名") {
 		t.Fatal("collapsed dock should hide its panel")
 	}
 

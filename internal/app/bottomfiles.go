@@ -273,17 +273,38 @@ func (a *App) bottomFileTree(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 }
 
 func (a *App) treeDirRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string, depth int) {
+	a.dirTreeRow(c, t, b, dir, depth, false)
+}
+
+// dirTreeRow draws one folder of the dock's tree, for the remote filesystem
+// or, with local set, for this machine's disk.
+func (a *App) dirTreeRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string, depth int, local bool) {
 	kids := b.treeKids[dir]
 	loaded := b.treeLoaded[dir]
 	open := b.treeOpen[dir]
-	active := b.remoteDir == dir
+
+	prefix := "bf"
+	current := b.remoteDir
+	label := path.Base(dir)
+	if dir == "/" {
+		label = "/"
+	}
+	if local {
+		prefix = "lf"
+		current = b.localDir
+		label = localTreeLabel(dir)
+	}
+	active := current == dir
+	if local {
+		active = strings.EqualFold(current, dir)
+	}
 	hasKids := !loaded || len(kids) > 0
 
 	ui.Row(c).FillWidth().Height(29).Gap(1).AlignItems(ui.Center).Children(func() {
 		ui.Box(c).Width(float32(depth) * 15).Shrink(0)
 
 		if hasKids {
-			twisty := ui.ButtonBase(c.Key("bf-tw-"+dir)).Size(19, 19).Center().Radius(4).
+			twisty := ui.ButtonBase(c.Key(prefix+"-tw-"+dir)).Size(19, 19).Center().Radius(4).
 				Tooltip(condLabel(open, "收起目录", "展开目录"))
 			if twisty.Hovered() {
 				twisty.Background(t.SurfaceHover)
@@ -307,7 +328,7 @@ func (a *App) treeDirRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 			ui.Box(c).Width(19).Shrink(0)
 		}
 
-		row := ui.ButtonBase(c.Key("bf-tree-"+dir)).Grow(1).Height(26).
+		row := ui.ButtonBase(c.Key(prefix+"-tree-"+dir)).Grow(1).Height(26).
 			Padding(0, 4).Radius(4).Gap(8).AlignItems(ui.Center).Justify(ui.Start)
 		if active {
 			row.Background(colCyan.Alpha(0.08))
@@ -316,15 +337,15 @@ func (a *App) treeDirRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 		}
 		row.Children(func() {
 			ui.Image(c, iconFileFolder).Size(19, 19).Fit(ui.Contain).Shrink(0)
-			label := path.Base(dir)
-			if dir == "/" {
-				label = "/"
-			}
 			ui.Text(c, shortLabel(label, 22)).FontSize(13).Font("Cascadia Code").
 				TextColor(colText2).NoWrap()
 		})
 		if row.Clicked() {
-			a.navigateRemote(b, dir)
+			if local {
+				a.navigateLocal(b, dir)
+			} else {
+				a.navigateRemote(b, dir)
+			}
 		}
 	})
 
@@ -334,7 +355,7 @@ func (a *App) treeDirRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 				Padding(1, 8, 2, float32(depth)*15+28).NoWrap()
 		}
 		for _, kid := range kids {
-			a.treeDirRow(c, t, b, kid, depth+1)
+			a.dirTreeRow(c, t, b, kid, depth+1, local)
 		}
 	}
 }

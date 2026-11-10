@@ -21,9 +21,16 @@ type fileBrowser struct {
 	termID     int64
 	client     *sftp.Client
 	remoteHome string
+	// localMode marks a browser that browses this machine's disk (a local
+	// terminal). Its tree and paths use the local filesystem; client is nil.
+	localMode bool
 
 	localDir       string
 	localPathInput string
+	localPathEdit  bool
+	localPathPick  bool
+	localPathWait  bool
+	localPathFocus ui.Handle
 	localEntries   []os.FileInfo
 	localSel       int
 	localErr       string
@@ -119,6 +126,8 @@ func (a *App) ensureLocalBrowser(ts *termSession) *fileBrowser {
 		localDir = "."
 	}
 	b := newFileBrowser(ts.ID, nil, localDir, "")
+	b.localMode = true
+	b.revealLocalTreePath(localDir)
 	a.browsers[ts.ID] = b
 	return b
 }
@@ -214,67 +223,22 @@ func (a *App) transferBar(c *ui.Context, t *ui.Theme) {
 	})
 }
 
+// localPane is the local terminal's file dock. It mirrors the remote dock
+// (breadcrumb bar, directory tree, same table) so the two look the same.
 func (a *App) localPane(c *ui.Context, b *fileBrowser, t *ui.Theme) {
-	ui.Column(c).Grow(1).FillHeight().Background(colPanel2).
-		Border(1, colLine).Radius(10).Children(func() {
-		a.filePaneHead(c, t, "本地", "本机", iconTerm, colViolet, func() {
-			if paneIconButton(c, t, "local-refresh", iconRefresh, "刷新").Clicked() {
-				b.loadLocal()
-			}
-			if paneIconButton(c, t, "local-up", iconArrowUp, "上一级").Clicked() {
-				a.navigateLocal(b, filepath.Dir(b.localDir))
-			}
-			if paneIconButton(c, t, "local-upload", iconUpload, "上传所选到远端").Clicked() {
-				a.uploadSelected(b)
-			}
-			if paneIconButton(c, t, "local-download", iconDownload, "下载所选到本机").Clicked() {
-				a.downloadSelected(b)
-			}
-			more := paneIconButton(c, t, "local-more", iconMore, "更多")
-			more.Menu(func(m *ui.Menu) {
-				if m.Item("新建文件").Chosen() {
-					a.promptNewFile(b, false)
-				}
-				if m.Item("新建文件夹").Chosen() {
-					a.promptMkdir(b, false)
-				}
-				m.Separator()
-				if m.Item("重命名").Chosen() {
-					a.promptRename(b, false)
-				}
-				if m.Item("删除").Chosen() {
-					a.deleteSelected(b, false)
-				}
-			})
-		})
-
+	ui.Column(c).FillWidth().FillHeight().Children(func() {
 		a.localPathBar(c, t, b)
-
+		if a.transfer != nil {
+			a.transferBar(c, t)
+		}
 		if b.localErr != "" {
-			ui.Text(c, shortLabel(b.localErr, 90)).FontSize(9).TextColor(colRed).Padding(2, 10)
+			ui.Text(c, shortLabel(b.localErr, 100)).FontSize(9).TextColor(colRed).Padding(2, 12)
 		}
-
-		tableTheme := fileTableTheme(t)
-		tableTheme.FontSize = 10.5
-		tableTheme.TextMuted = colMuted2
-		b.localState.CellMenu = func(m *ui.Menu, row, col int) {
-			if row >= 0 && row < len(b.localEntries) {
-				b.localSel = row
-			}
-			a.fileContextMenu(m, b, false)
-		}
-		ui.Themed(c, tableTheme).Grow(1).Background(ui.Transparent).
-			ContextMenu(func(m *ui.Menu) { a.fileBackgroundMenu(m, b, false) }).Children(func() {
-			if ui.Table(c, &b.localState, bottomFileColumns(), len(b.localEntries), func(row, col int) {
-				if row >= 0 && row < len(b.localEntries) {
-					compactFileCell(c, b.localEntries[row], col)
-				}
-			}).Grow(1).Submitted() {
-				a.openLocalSelected(b)
-			}
-		})
-
-		a.filePaneFoot(c, fmt.Sprintf("%d 项", len(b.localEntries)), "本机")
+		ui.Split(c, &a.fileSplit, func() {
+			a.localFileTree(c, t, b)
+		}, func() {
+			a.localFileTable(c, t, b)
+		}).Grow(1).FillWidth().SplitReset(210)
 	})
 }
 
@@ -368,84 +332,6 @@ func (a *App) fileBackgroundMenu(m *ui.Menu, b *fileBrowser, remote bool) {
 		} else {
 			b.loadLocal()
 		}
-	}
-}
-
-func (a *App) filePaneHead(c *ui.Context, t *ui.Theme, title, badge string, icon *ui.SVG, color ui.Color, actions func()) {
-	ui.Row(c).Height(33).Shrink(0).Padding(0, 10).Gap(6).AlignItems(ui.Center).
-		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
-		iconEl(c, icon, 13, color)
-		ui.Text(c, title).FontSize(11).FontWeight(600).TextColor(colText).NoWrap()
-		ui.Box(c).Height(17).Padding(0, 5).Radius(4).Background(colPanelTop).
-			Border(1, colLine).Center().Children(func() {
-			ui.Text(c, shortLabel(badge, 16)).FontSize(8).Font("Cascadia Code").
-				TextColor(colMuted).NoWrap()
-		})
-		ui.Text(c, "").Grow(1)
-		actions()
-	})
-}
-
-func (a *App) localPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	ui.Row(c).Height(27).Shrink(0).Padding(0, 8).Gap(3).AlignItems(ui.Center).
-		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
-		up := ui.ButtonBase(c.Key("fp-local-up")).Size(21, 21).Center().Radius(4).
-			Tooltip("上级目录")
-		if up.Hovered() {
-			up.Background(t.SurfaceHover)
-		}
-		up.Children(func() { iconEl(c, iconArrowUp, 11, colMuted) })
-		if up.Clicked() {
-			a.navigateLocal(b, filepath.Dir(b.localDir))
-		}
-
-		input := ui.TextInput(c, &b.localPathInput).Grow(1).Height(21).
-			Font("Cascadia Code").FontSize(9.8).Placeholder("输入本地路径，回车跳转").
-			Background(ui.Transparent).Border(0, ui.Transparent)
-		if input.Submitted() {
-			a.navigateLocal(b, b.localPathInput)
-		}
-		ui.Text(c, fmt.Sprintf("%d 项", len(b.localEntries))).FontSize(8.5).
-			Font("Cascadia Code").TextColor(colMuted2).NoWrap()
-	})
-}
-
-func (a *App) fileCrumb(c *ui.Context, t *ui.Theme, b *fileBrowser, label, target string, active bool) {
-	btn := ui.ButtonBase(c.Key("fp-crumb-"+target)).Height(20).Padding(0, 4).Radius(3).
-		Center().Tooltip(target)
-	if active {
-		btn.Background(colCyan.Alpha(0.08))
-	} else if btn.Hovered() {
-		btn.Background(t.SurfaceHover)
-	}
-	btn.Children(func() {
-		ui.Text(c, label).FontSize(9.5).Font("Cascadia Code").
-			TextColor(condColor(active, colCyan, colMuted)).NoWrap()
-	})
-	if btn.Clicked() && !active {
-		a.navigateRemote(b, target)
-	}
-}
-
-func (a *App) filePaneFoot(c *ui.Context, left, right string) {
-	ui.Row(c).Height(22).Shrink(0).Padding(0, 9).Gap(5).AlignItems(ui.Center).
-		BorderWidth(1, 0, 0, 0).BorderColor(colLine).Children(func() {
-		ui.Text(c, left).FontSize(8.3).Font("Cascadia Code").TextColor(colMuted2)
-		ui.Text(c, "").Grow(1)
-		ui.Text(c, "UTF-8").FontSize(8.3).Font("Cascadia Code").TextColor(colMuted2)
-		ui.Text(c, right).FontSize(8.3).Font("Cascadia Code").TextColor(colMuted2)
-	})
-}
-
-func compactFileCell(c *ui.Context, f os.FileInfo, col int) {
-	switch col {
-	case 0:
-		fileCell(c, f, "—", 0)
-	case 1:
-		fileCell(c, f, "—", 1)
-	case 2:
-		ui.Text(c, f.ModTime().Format("01/02 15:04")).FontSize(10).
-			Font("Cascadia Code").TextColor(colMuted).TextAlign(ui.End).NoWrap()
 	}
 }
 
@@ -701,6 +587,7 @@ func (a *App) navigateLocal(b *fileBrowser, dir string) {
 		b.localErr = err.Error()
 		return
 	}
+	b.revealLocalTreePath(b.localDir)
 	a.fileErr = ""
 }
 
@@ -715,6 +602,20 @@ func (b *fileBrowser) setLocalDir(dir string) error {
 	b.localEntries = entries
 	b.localSel = -1
 	b.localErr = ""
+
+	// Keep the open tree branch in sync with the table, like loadRemote does.
+	if b.localMode && b.treeKids != nil {
+		kids := make([]string, 0, len(entries))
+		for _, f := range entries {
+			if f.IsDir() {
+				kids = append(kids, filepath.Join(dir, f.Name()))
+			}
+		}
+		sort.Strings(kids)
+		b.treeKids[dir] = kids
+		b.treeLoaded[dir] = true
+		delete(b.treeErr, dir)
+	}
 	return nil
 }
 
@@ -791,6 +692,23 @@ func (b *fileBrowser) loadTreeDir(dir string) {
 		return
 	}
 	b.treeLoaded[dir] = true
+	if b.localMode {
+		entries, err := readLocalDir(dir)
+		if err != nil {
+			b.treeErr[dir] = err.Error()
+			return
+		}
+		kids := make([]string, 0, len(entries))
+		for _, f := range entries {
+			if f.IsDir() {
+				kids = append(kids, filepath.Join(dir, f.Name()))
+			}
+		}
+		sort.Strings(kids)
+		b.treeKids[dir] = kids
+		delete(b.treeErr, dir)
+		return
+	}
 	if b.client == nil {
 		return
 	}
@@ -813,6 +731,42 @@ func (b *fileBrowser) loadTreeDir(dir string) {
 	sort.Strings(kids)
 	b.treeKids[dir] = kids
 	delete(b.treeErr, dir)
+}
+
+// revealLocalTreePath loads and opens the local tree down to dir, so the
+// active folder's branch is visible when the pane appears.
+func (b *fileBrowser) revealLocalTreePath(dir string) {
+	if !b.localMode {
+		return
+	}
+	root, segs := localPathParts(dir)
+	b.loadTreeDir(root)
+	b.treeOpen[root] = true
+	acc := root
+	for _, seg := range segs {
+		acc = filepath.Join(acc, seg)
+		b.treeOpen[acc] = true
+		b.loadTreeDir(acc)
+	}
+}
+
+// localPathParts splits a local directory into its volume root (C:\ or a
+// UNC share root) and the folders below it.
+func localPathParts(dir string) (string, []string) {
+	dir = filepath.Clean(dir)
+	vol := filepath.VolumeName(dir)
+	root := vol + string(filepath.Separator)
+	if vol == "" {
+		root = string(filepath.Separator)
+	}
+	rest := strings.TrimPrefix(dir, root)
+	segs := make([]string, 0, 4)
+	for _, seg := range strings.Split(rest, string(filepath.Separator)) {
+		if seg != "" {
+			segs = append(segs, seg)
+		}
+	}
+	return root, segs
 }
 
 // revealTreePath expands the ancestors of dir so the active branch is visible
