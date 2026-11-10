@@ -97,6 +97,13 @@ type App struct {
 	editorOpen   bool
 	editor       *editorSession
 
+	chmodOpen    bool
+	chmodBrowser *fileBrowser
+	chmodName    string
+	chmodRemote  bool
+	chmodMode    [9]bool
+	chmodErr     string
+
 	monitorOpen bool
 	monitors    map[int64]*monitorState
 
@@ -302,6 +309,9 @@ func (a *App) View(c *ui.Context) {
 		}
 		if a.hostKeyOpen {
 			a.hostKeyModal(c, t)
+		}
+		if a.chmodOpen {
+			a.chmodModal(c, t)
 		}
 		if settingsWasOpen && !a.settingsOpen {
 			a.saveSettings()

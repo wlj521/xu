@@ -255,7 +255,7 @@ func (a *App) localPane(c *ui.Context, b *fileBrowser, t *ui.Theme) {
 		}
 
 		tableTheme := fileTableTheme(t)
-		tableTheme.FontSize = 9
+		tableTheme.FontSize = 10.5
 		tableTheme.TextMuted = colMuted2
 		b.localState.CellMenu = func(m *ui.Menu, row, col int) {
 			if row >= 0 && row < len(b.localEntries) {
@@ -279,12 +279,12 @@ func (a *App) localPane(c *ui.Context, b *fileBrowser, t *ui.Theme) {
 }
 
 func paneIconButton(c *ui.Context, t *ui.Theme, key string, icon *ui.SVG, tip string) ui.Element {
-	b := ui.ButtonBase(c.Key(key)).Size(23, 23).Radius(5).Center().Tooltip(tip).Label(tip)
+	b := ui.ButtonBase(c.Key(key)).Size(25, 25).Radius(5).Center().Tooltip(tip).Label(tip)
 	if b.Hovered() {
 		b.Background(t.SurfaceHover)
 	}
 	b.Children(func() {
-		iconEl(c, icon, 12, colMuted)
+		iconEl(c, icon, 13.5, colMuted)
 	})
 	return b
 }
@@ -331,8 +331,14 @@ func (a *App) fileContextMenu(m *ui.Menu, b *fileBrowser, remote bool) {
 		if m.Item("重命名").Chosen() {
 			a.promptRename(b, remote)
 		}
+		if remote && m.Item("修改权限…").Chosen() {
+			a.openChmodDialog(b, true)
+		}
 		if m.Item("删除").Chosen() {
 			a.deleteSelected(b, remote)
+		}
+		if remote && !f.IsDir() && m.Item("快速删除（rm）").Chosen() {
+			a.quickRemoveSelected(b, true)
 		}
 	}
 	m.Separator()
@@ -438,7 +444,7 @@ func compactFileCell(c *ui.Context, f os.FileInfo, col int) {
 	case 1:
 		fileCell(c, f, "—", 1)
 	case 2:
-		ui.Text(c, f.ModTime().Format("01/02 15:04")).FontSize(9.1).
+		ui.Text(c, f.ModTime().Format("01/02 15:04")).FontSize(10).
 			Font("Cascadia Code").TextColor(colMuted).TextAlign(ui.End).NoWrap()
 	}
 }
@@ -526,11 +532,11 @@ func (a *App) uploadDropped(b *fileBrowser, paths []string) {
 func fileColumns() []ui.TableColumn {
 	return []ui.TableColumn{
 		{Title: "文件名"},
-		{Title: "大小", Width: 82, Align: ui.End},
-		{Title: "类型", Width: 68},
-		{Title: "修改时间", Width: 132},
-		{Title: "权限", Width: 98},
-		{Title: "用户/组", Width: 96},
+		{Title: "大小", Width: 88, Align: ui.End},
+		{Title: "类型", Width: 74},
+		{Title: "修改时间", Width: 142},
+		{Title: "权限", Width: 110},
+		{Title: "用户/组", Width: 108},
 	}
 }
 
@@ -539,8 +545,8 @@ func fileColumns() []ui.TableColumn {
 func bottomFileColumns() []ui.TableColumn {
 	return []ui.TableColumn{
 		{Title: "名称"},
-		{Title: "大小", Width: 64, Align: ui.End},
-		{Title: "修改时间", Width: 80, Align: ui.End},
+		{Title: "大小", Width: 70, Align: ui.End},
+		{Title: "修改时间", Width: 94, Align: ui.End},
 	}
 }
 
@@ -565,7 +571,7 @@ func bottomRemoteCell(c *ui.Context, b *fileBrowser, row, col int) {
 	case 1:
 		fileCell(c, f, "—", 1)
 	case 2:
-		ui.Text(c, f.ModTime().Format("2006/01/02 15:04")).FontSize(9.5).
+		ui.Text(c, f.ModTime().Format("2006/01/02 15:04")).FontSize(10.2).
 			Font("Cascadia Code").TextColor(colMuted).NoWrap()
 	}
 }
@@ -584,7 +590,7 @@ func fileKind(f os.FileInfo) string {
 func fileVisual(f os.FileInfo) (*ui.SVG, ui.Color) {
 	switch {
 	case f.IsDir():
-		return iconFolder, colAmber
+		return iconFileFolder, colAmber
 	case f.Mode()&os.ModeSymlink != 0:
 		return iconLink, colFileLink
 	}
@@ -630,10 +636,17 @@ func fileVisual(f os.FileInfo) (*ui.SVG, ui.Color) {
 
 func fileTypeIcon(c *ui.Context, f os.FileInfo) ui.Element {
 	icon, color := fileVisual(f)
-	tile := ui.Box(c).Size(20, 20).Shrink(0).Radius(5).
+	if f.IsDir() {
+		iconBox := ui.Box(c).Size(22, 22).Shrink(0).Center()
+		iconBox.Children(func() {
+			ui.Image(c, icon).Size(18, 18).Fit(ui.Contain)
+		})
+		return iconBox
+	}
+	tile := ui.Box(c).Size(22, 22).Shrink(0).Radius(6).
 		Background(color.Alpha(0.11)).Center()
 	tile.Children(func() {
-		iconEl(c, icon, 13, color)
+		iconEl(c, icon, 14.5, color)
 	})
 	return tile
 }
@@ -645,25 +658,25 @@ func fileCell(c *ui.Context, f os.FileInfo, owner string, col int) {
 		if f.IsDir() {
 			name += "/"
 		}
-		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			fileTypeIcon(c, f)
-			ui.Text(c, name).FontSize(11).Font("Cascadia Code").TextColor(colText2).NoWrap()
+			ui.Text(c, name).FontSize(12.2).Font("Cascadia Code").TextColor(colText2).NoWrap()
 		})
 	case 1:
 		if !f.IsDir() {
-			ui.Text(c, humanSize(f.Size())).FontSize(9.1).Font("Cascadia Code").
+			ui.Text(c, humanSize(f.Size())).FontSize(10).Font("Cascadia Code").
 				TextColor(colMuted).TextAlign(ui.End).NoWrap()
 		}
 	case 2:
-		ui.Text(c, fileKind(f)).FontSize(9.1).Font("Cascadia Code").TextColor(colMuted).NoWrap()
+		ui.Text(c, fileKind(f)).FontSize(10).Font("Cascadia Code").TextColor(colMuted).NoWrap()
 	case 3:
-		ui.Text(c, f.ModTime().Format("2006/01/02 15:04")).FontSize(9.1).
+		ui.Text(c, f.ModTime().Format("2006/01/02 15:04")).FontSize(10).
 			Font("Cascadia Code").TextColor(colMuted).NoWrap()
 	case 4:
-		ui.Text(c, f.Mode().Perm().String()).FontSize(9.1).Font("Cascadia Code").
+		ui.Text(c, f.Mode().Perm().String()).FontSize(10).Font("Cascadia Code").
 			TextColor(colFilePerm).NoWrap()
 	case 5:
-		ui.Text(c, owner).FontSize(9.1).Font("Cascadia Code").TextColor(colMuted).NoWrap()
+		ui.Text(c, owner).FontSize(10).Font("Cascadia Code").TextColor(colMuted).NoWrap()
 	}
 }
 
@@ -1235,6 +1248,45 @@ func (a *App) deleteSelected(b *fileBrowser, remote bool) {
 		return
 	}
 
+	if remote {
+		b.loadRemote()
+	} else {
+		b.loadLocal()
+	}
+}
+
+func (a *App) quickRemoveSelected(b *fileBrowser, remote bool) {
+	var f os.FileInfo
+	if remote {
+		f = selectedEntry(b.remoteEntries, b.remoteSel)
+	} else {
+		f = selectedEntry(b.localEntries, b.localSel)
+	}
+	if f == nil {
+		a.fileErr = "请先选择一个文件"
+		return
+	}
+	if f.IsDir() {
+		a.fileErr = "快速删除仅支持文件，目录请使用“删除”"
+		return
+	}
+
+	var err error
+	if remote {
+		if b.client == nil {
+			a.fileErr = "SSH 连接不可用"
+			return
+		}
+		err = b.client.Remove(path.Join(b.remoteDir, f.Name()))
+	} else {
+		err = os.Remove(filepath.Join(b.localDir, f.Name()))
+	}
+	if err != nil {
+		a.fileErr = "删除失败: " + err.Error()
+		return
+	}
+
+	a.status = "已删除 " + f.Name()
 	if remote {
 		b.loadRemote()
 	} else {

@@ -20,9 +20,6 @@ func (a *App) bottomFileContent(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 	ui.Column(c).FillWidth().FillHeight().Children(func() {
 		a.bottomPathBar(c, t, b)
 
-		if a.promptOpen {
-			a.promptBar(c)
-		}
 		if a.transfer != nil {
 			a.transferBar(c, t)
 		}
@@ -47,6 +44,7 @@ func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 		}
 		opened := false
 		tableTheme := fileTableTheme(t)
+		tableTheme.FontSize = 11.5
 		var table ui.Element
 		ui.Themed(c, tableTheme).Grow(1).FillWidth().Background(ui.Transparent).Children(func() {
 			table = ui.Table(c, &b.remoteState, cols, len(b.remoteEntries), func(row, col int) {
@@ -107,20 +105,8 @@ func (a *App) clickRemoteRow(b *fileBrowser, row int) {
 
 func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 	b.syncRemotePathEdit(c)
-	ui.Row(c).Height(32).Shrink(0).Padding(0, 8).Gap(2).AlignItems(ui.Center).
-		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Background(colPanel).Children(func() {
-		up := ui.ButtonBase(c.Key("bf-path-up")).Size(22, 22).Center().Radius(4).
-			Tooltip("上级目录").Label("上级目录").Disabled(b.remoteDir == "/")
-		if up.Hovered() && b.remoteDir != "/" {
-			up.Background(t.SurfaceHover)
-		}
-		up.Children(func() {
-			iconEl(c, iconFolderUp, 12, condColor(b.remoteDir == "/", colMuted2, colMuted))
-		})
-		if up.Clicked() {
-			a.navigateRemote(b, path.Dir(b.remoteDir))
-		}
-
+	ui.Row(c).Height(30).Shrink(0).Padding(0, 9).Gap(2).AlignItems(ui.Center).
+		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Background(colPanelTop).Children(func() {
 		if b.remotePathEdit {
 			a.remotePathField(c, b)
 		} else {
@@ -128,9 +114,9 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			// so the actions on the right keep their room. A click on the
 			// empty part of the bar edits the whole path, as Explorer's
 			// address bar does.
-			ui.ScrollHorizontal(c).Grow(1).Height(32).
+			ui.ScrollHorizontal(c).Grow(1).Height(30).
 				OnClick(b.beginRemotePathEdit).Children(func() {
-				ui.Row(c).Height(32).Gap(2).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Height(30).Gap(2).AlignItems(ui.Center).Children(func() {
 					a.pathCrumb(c, t, b, "/", "/", b.remoteDir == "/")
 					if b.remoteDir != "/" {
 						acc := "/"
@@ -140,7 +126,7 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 								continue
 							}
 							acc = path.Join(acc, seg)
-							ui.Text(c, "›").FontSize(9).TextColor(colMuted2)
+							ui.Text(c, "›").FontSize(10).TextColor(colMuted2)
 							a.pathCrumb(c, t, b, shortLabel(seg, 18), acc, i == len(segs)-1)
 						}
 					}
@@ -148,18 +134,19 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			})
 		}
 
-		ui.Text(c, fmt.Sprintf("%d 项", len(b.remoteEntries))).FontSize(8.5).
+		up := paneIconButton(c, t, "bf-act-up", iconFolderUp, "返回上一级")
+		up.Disabled(b.remoteDir == "/")
+		if up.Clicked() {
+			a.navigateRemote(b, path.Dir(b.remoteDir))
+		}
+
+		ui.Text(c, fmt.Sprintf("%d 项", len(b.remoteEntries))).FontSize(9.2).
 			Font("Cascadia Code").TextColor(colMuted2).NoWrap()
 
-		ui.Box(c).Width(1).Height(14).Background(colLine).MarginX(5)
+		ui.Box(c).Width(1).Height(15).Background(colLine).MarginX(5)
 
 		if paneIconButton(c, t, "bf-act-refresh", iconRefresh, "刷新").Clicked() {
 			b.loadRemote()
-		}
-		upTop := paneIconButton(c, t, "bf-act-up", iconArrowUp, "返回上一级")
-		upTop.Disabled(b.remoteDir == "/")
-		if upTop.Clicked() {
-			a.navigateRemote(b, path.Dir(b.remoteDir))
 		}
 		if paneIconButton(c, t, "bf-act-new", iconNewFolder, "新建文件夹").Clicked() {
 			a.promptMkdir(b, true)
@@ -255,7 +242,7 @@ func (b *fileBrowser) endRemotePathEdit() {
 }
 
 func (a *App) pathCrumb(c *ui.Context, t *ui.Theme, b *fileBrowser, label, target string, active bool) {
-	btn := ui.ButtonBase(c.Key("bf-crumb-"+target)).Height(20).Padding(0, 4).Radius(3).
+	btn := ui.ButtonBase(c.Key("bf-crumb-"+target)).Height(22).Padding(0, 4).Radius(3).
 		Center().Tooltip(target)
 	if active {
 		btn.Background(colCyan.Alpha(0.08))
@@ -263,7 +250,7 @@ func (a *App) pathCrumb(c *ui.Context, t *ui.Theme, b *fileBrowser, label, targe
 		btn.Background(t.SurfaceHover)
 	}
 	btn.Children(func() {
-		ui.Text(c, label).FontSize(9.5).Font("Cascadia Code").
+		ui.Text(c, label).FontSize(10.2).Font("Cascadia Code").
 			TextColor(condColor(active, colCyan, colMuted)).NoWrap()
 	})
 	if btn.Clicked() {
@@ -277,8 +264,8 @@ func (a *App) pathCrumb(c *ui.Context, t *ui.Theme, b *fileBrowser, label, targe
 
 func (a *App) bottomFileTree(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 	ui.Column(c).FillWidth().FillHeight().Background(colTreeBg).Children(func() {
-		ui.Column(c).Grow(1).Padding(5).Children(func() {
-			ui.Scroll(c).Grow(1).Gap(1).Children(func() {
+		ui.Column(c).Grow(1).Padding(7).Children(func() {
+			ui.Scroll(c).Grow(1).Gap(2).Children(func() {
 				a.treeDirRow(c, t, b, "/", 0)
 			})
 		})
@@ -292,11 +279,11 @@ func (a *App) treeDirRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 	active := b.remoteDir == dir
 	hasKids := !loaded || len(kids) > 0
 
-	ui.Row(c).FillWidth().Height(24).Gap(1).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Width(float32(depth) * 12).Shrink(0)
+	ui.Row(c).FillWidth().Height(29).Gap(1).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Width(float32(depth) * 15).Shrink(0)
 
 		if hasKids {
-			twisty := ui.ButtonBase(c.Key("bf-tw-"+dir)).Size(16, 16).Center().Radius(4).
+			twisty := ui.ButtonBase(c.Key("bf-tw-"+dir)).Size(19, 19).Center().Radius(4).
 				Tooltip(condLabel(open, "收起目录", "展开目录"))
 			if twisty.Hovered() {
 				twisty.Background(t.SurfaceHover)
@@ -306,7 +293,7 @@ func (a *App) treeDirRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 				if open {
 					icon = iconChevron
 				}
-				iconEl(c, icon, 9, colMuted2)
+				iconEl(c, icon, 11, colMuted2)
 			})
 			if twisty.Clicked() {
 				if open {
@@ -317,28 +304,24 @@ func (a *App) treeDirRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 				}
 			}
 		} else {
-			ui.Box(c).Width(16).Shrink(0)
+			ui.Box(c).Width(19).Shrink(0)
 		}
 
-		row := ui.ButtonBase(c.Key("bf-tree-"+dir)).Grow(1).Height(22).
-			Padding(0, 4).Radius(4).Gap(6).AlignItems(ui.Center).Justify(ui.Start)
+		row := ui.ButtonBase(c.Key("bf-tree-"+dir)).Grow(1).Height(26).
+			Padding(0, 4).Radius(4).Gap(8).AlignItems(ui.Center).Justify(ui.Start)
 		if active {
 			row.Background(colCyan.Alpha(0.08))
 		} else if row.Hovered() {
 			row.Background(t.SurfaceHover)
 		}
 		row.Children(func() {
-			color := colAmber
-			if active {
-				color = colCyan
-			}
-			iconEl(c, iconFolder, 12, color)
+			ui.Image(c, iconFileFolder).Size(19, 19).Fit(ui.Contain).Shrink(0)
 			label := path.Base(dir)
 			if dir == "/" {
 				label = "/"
 			}
-			ui.Text(c, shortLabel(label, 22)).FontSize(10.5).
-				TextColor(condColor(active, colCyan, colMuted)).NoWrap()
+			ui.Text(c, shortLabel(label, 22)).FontSize(13).Font("Cascadia Code").
+				TextColor(colText2).NoWrap()
 		})
 		if row.Clicked() {
 			a.navigateRemote(b, dir)
@@ -347,8 +330,8 @@ func (a *App) treeDirRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 
 	if open {
 		if msg := b.treeErr[dir]; msg != "" {
-			ui.Text(c, shortLabel(msg, 34)).FontSize(8.5).TextColor(colRed).
-				Padding(1, 8, 2, float32(depth)*12+24).NoWrap()
+			ui.Text(c, shortLabel(msg, 34)).FontSize(9.6).TextColor(colRed).
+				Padding(1, 8, 2, float32(depth)*15+28).NoWrap()
 		}
 		for _, kid := range kids {
 			a.treeDirRow(c, t, b, kid, depth+1)

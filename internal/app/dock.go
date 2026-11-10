@@ -17,7 +17,7 @@ const (
 )
 
 func (a *App) dockShell(c *ui.Context, t *ui.Theme) {
-	ui.Column(c).Height(39).Shrink(0).Background(colPanelTop).
+	ui.Column(c).Height(32).Shrink(0).Background(colPanelTop).
 		BorderWidth(1, 0, 0, 0).BorderColor(colLine2).Children(func() {
 		a.dockHead(c, t)
 	})
@@ -46,7 +46,7 @@ func (a *App) dockHead(c *ui.Context, t *ui.Theme) {
 		tunnelCount = len(a.forwards[ts.ID])
 	}
 
-	ui.Row(c).Height(39).Shrink(0).Padding(0, 10).Gap(2).AlignItems(ui.Center).
+	ui.Row(c).Height(32).Shrink(0).Padding(0, 9).Gap(2).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
 		tabs := []struct {
 			tab   dockTab
@@ -63,7 +63,7 @@ func (a *App) dockHead(c *ui.Context, t *ui.Theme) {
 			item := item
 			active := dockTab(a.bottomFileTab) == item.tab
 			b := ui.ButtonBase(c.Key(fmt.Sprintf("dock-tab-%d", item.tab))).
-				Height(27).Padding(0, 9).Radius(6).Gap(6).AlignItems(ui.Center)
+				Height(24).Padding(0, 8).Radius(5).Gap(5).AlignItems(ui.Center)
 			if active {
 				b.Background(colPanel2)
 				b.Border(1, colLine2)
@@ -75,7 +75,7 @@ func (a *App) dockHead(c *ui.Context, t *ui.Theme) {
 				ui.Text(c, item.label).FontSize(10.8).FontWeight(condWeight(active, 600, 500)).
 					TextColor(condColor(active, colText, colText2)).NoWrap()
 				if item.count > 0 {
-					ui.Box(c).Height(15).Padding(0, 4).Radius(8).
+					ui.Box(c).Height(14).Padding(0, 4).Radius(7).
 						Background(colAccentSoft).Center().Children(func() {
 						ui.Text(c, fmt.Sprintf("%d", item.count)).FontSize(8).
 							Font("Cascadia Code").TextColor(colCyan).NoWrap()
@@ -118,13 +118,13 @@ func (a *App) dockHead(c *ui.Context, t *ui.Theme) {
 			chevron = iconChevronUp
 			tip = "展开底部面板（Ctrl J）"
 		}
-		collapse := ui.ButtonBase(c.Key("dock-toggle")).Size(24, 24).Radius(6).Center().
+		collapse := ui.ButtonBase(c.Key("dock-toggle")).Size(22, 22).Radius(5).Center().
 			Tooltip(tip).Label(tip)
 		if collapse.Hovered() {
 			collapse.Background(colPanel2)
 		}
 		collapse.Children(func() {
-			iconEl(c, chevron, 12, colMuted)
+			iconEl(c, chevron, 11.5, colMuted)
 		})
 		if collapse.Clicked() {
 			a.toggleDock()
@@ -163,7 +163,7 @@ func (a *App) dockFilesPanel(c *ui.Context, t *ui.Theme) {
 		}
 	}
 
-	ui.Column(c).Grow(1).FillHeight().Padding(10, 12, 12, 12).Gap(6).Children(func() {
+	ui.Column(c).Grow(1).FillHeight().Padding(0, 0, 6, 0).Gap(4).Children(func() {
 		if a.promptOpen {
 			a.promptBar(c)
 		}

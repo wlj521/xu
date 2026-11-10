@@ -135,6 +135,17 @@ func TestFileToolbarUpNavigatesToParent(t *testing.T) {
 	b.remotePathInput = b.remoteDir
 	tt.Frame()
 
+	up, ok := tt.Find("返回上一级")
+	if !ok {
+		t.Fatalf("up button missing; texts = %q", tt.Texts())
+	}
+	count, ok := tt.Find("2 项")
+	if !ok {
+		t.Fatalf("item count missing; texts = %q", tt.Texts())
+	}
+	if up.X > count.X {
+		t.Fatalf("up button at %.1f is not before count at %.1f", up.X, count.X)
+	}
 	if err := tt.Click("返回上一级"); err != nil {
 		t.Fatalf("up button: %v", err)
 	}
@@ -356,7 +367,7 @@ func TestFileVisualsByType(t *testing.T) {
 		mode os.FileMode
 		want *ui.SVG
 	}{
-		{"projects", true, 0, iconFolder},
+		{"projects", true, 0, iconFileFolder},
 		{"deploy.sh", false, 0, iconFileScript},
 		{"main.go", false, 0, iconFileCode},
 		{"app.env", false, 0, iconFileConfig},
@@ -486,7 +497,10 @@ func TestFileRowContextMenu(t *testing.T) {
 	}
 	tt.RightClickAt(box.X+box.W/2, box.Y+box.H/2)
 	menu := tt.Menu()
-	want := map[string]bool{"新建文件": false, "新建文件夹": false, "删除": false, "下载到本机": false}
+	want := map[string]bool{
+		"新建文件": false, "新建文件夹": false, "删除": false, "下载到本机": false,
+		"修改权限…": false, "快速删除（rm）": false,
+	}
 	for _, item := range menu {
 		if _, ok := want[item]; ok {
 			want[item] = true
@@ -496,5 +510,53 @@ func TestFileRowContextMenu(t *testing.T) {
 		if !found {
 			t.Fatalf("context menu %q missing %q", menu, item)
 		}
+	}
+}
+
+func TestFilePromptShownOnce(t *testing.T) {
+	a, _, tt := newRemoteDockApp(t)
+	a.openPrompt("修改权限测试", "644", nil)
+	tt.Frame()
+
+	count := 0
+	for _, text := range tt.Texts() {
+		if text == "修改权限测试" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("file prompt shown %d times, want once", count)
+	}
+}
+
+func TestQuickRemoveRejectsDirectory(t *testing.T) {
+	a := New()
+	b := newFileBrowser(1, nil, t.TempDir(), "")
+	b.remoteEntries = []os.FileInfo{fakeInfo{name: "logs", dir: true}}
+	b.remoteSel = 0
+
+	a.quickRemoveSelected(b, true)
+	if a.fileErr != "快速删除仅支持文件，目录请使用“删除”" {
+		t.Fatalf("quick remove directory error = %q", a.fileErr)
+	}
+}
+
+func TestQuickRemoveLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	name := "old.conf"
+	target := filepath.Join(dir, name)
+	if err := os.WriteFile(target, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := New()
+	b := newFileBrowser(1, nil, dir, "")
+	b.localSel = 0
+
+	a.quickRemoveSelected(b, false)
+	if a.fileErr != "" {
+		t.Fatalf("quick remove: %s", a.fileErr)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("quick remove left the file behind: %v", err)
 	}
 }
