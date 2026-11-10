@@ -6,11 +6,23 @@ func svgIcon(body string) *ui.SVG {
 	return ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">` + body + `</svg>`))
 }
 
+func fileDocIcon(detail string) *ui.SVG {
+	return svgIcon(`<path d="M5.6 2.9h7.2l5.2 5.2v11.4a1.8 1.8 0 0 1-1.8 1.8H7.4a1.8 1.8 0 0 1-1.8-1.8V4.7a1.8 1.8 0 0 1 1.8-1.8Z"/><path d="M12.8 2.9v5.2h5.2"/>` + detail)
+}
+
 var (
 	iconServer       = svgIcon(`<rect x="3.5" y="4" width="17" height="6" rx="1.6"/><rect x="3.5" y="14" width="17" height="6" rx="1.6"/><path d="M7 7h.01M7 17h.01M11 7h5M11 17h5"/>`)
 	iconTerm         = svgIcon(`<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="m7 9 3 3-3 3M12.5 15H17"/>`)
-	iconFolder       = svgIcon(`<path d="M3.5 7.5h6l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 19V7.5Z"/><path d="M3.5 7.5V5.8A1.3 1.3 0 0 1 4.8 4.5h4.4l2 2h6.5a1.3 1.3 0 0 1 1.3 1.3v1.7"/>`)
-	iconFile         = svgIcon(`<path d="M6 3.5h7l5 5V20a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 20V3.5Z"/><path d="M13 3.5v5h5"/>`)
+	iconFolder       = svgIcon(`<path d="M3.1 8h5.8l2 2h9.9l-1.3 7.8a2 2 0 0 1-2 1.7H5.2a2 2 0 0 1-2-1.8L2.4 9.2A1.4 1.4 0 0 1 3.1 8Z"/><path d="M3.1 8V6.2a1.7 1.7 0 0 1 1.7-1.7h4.4l2 2h6.9a1.7 1.7 0 0 1 1.7 1.7V8"/>`)
+	iconFile         = fileDocIcon("")
+	iconFileText     = fileDocIcon(`<path d="M8.3 12.4h7.2M8.3 15.1h7.2M8.3 17.8h4.7"/>`)
+	iconFileScript   = fileDocIcon(`<path d="m8.5 12.3 2.2 2.1-2.2 2.1M12.6 16.5h3.2"/>`)
+	iconFileCode     = fileDocIcon(`<path d="m10.2 12.4-2 2.1 2 2.1M13.8 12.4l2 2.1-2 2.1"/>`)
+	iconFileConfig   = fileDocIcon(`<path d="M8.3 12.5h7.2M8.3 15.3h7.2M8.3 18.1h7.2"/><circle cx="10.7" cy="12.5" r="1.05" fill="currentColor" stroke="none"/><circle cx="13.2" cy="15.3" r="1.05" fill="currentColor" stroke="none"/><circle cx="11.6" cy="18.1" r="1.05" fill="currentColor" stroke="none"/>`)
+	iconFileImage    = fileDocIcon(`<circle cx="15.2" cy="12.7" r="1.1"/><path d="m7.9 18.6 2.8-3.1 1.8 1.7 2.1-2.6 2.5 4"/>`)
+	iconFileTable    = fileDocIcon(`<rect x="8.2" y="12.2" width="7.6" height="6.4" rx=".7"/><path d="M8.2 14.3h7.6M8.2 16.4h7.6M12 12.2v6.4"/>`)
+	iconFileMedia    = fileDocIcon(`<path d="m10.2 12.5 4.2 2.5-4.2 2.5v-5Z" fill="currentColor" stroke="none"/>`)
+	iconFileArchive  = svgIcon(`<path d="m4.1 7.5 7.9-3.8 7.9 3.8v9L12 20.3l-7.9-3.8v-9Z"/><path d="m4.1 7.5 7.9 3.9 7.9-3.9M12 11.4v8.9"/><path d="M9.7 5.1v2.2M14.3 5.1v2.2M10.5 13.2h3M10.5 15.3h3"/>`)
 	iconLink         = svgIcon(`<path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1"/>`)
 	iconSearch       = svgIcon(`<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>`)
 	iconGear         = svgIcon(`<circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.94 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.57 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.08A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.57a1.7 1.7 0 0 0 1.03-1.56V3h4v.08A1.7 1.7 0 0 0 15.06 4.6a1.7 1.7 0 0 0 1.88-.34L17 4.2 19.83 7l-.06.06A1.7 1.7 0 0 0 19.43 9c.2.6.77 1 1.4 1h.17v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/>`)

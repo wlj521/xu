@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"xu/internal/sshx"
 )
 
-func TestDockFilePanelHasNoLocalPane(t *testing.T) {
+func TestDockFilePanelKeepsTreeWithoutHeader(t *testing.T) {
 	a := New()
 	a.stop()
 	a.terms = []*termSession{{
@@ -26,15 +27,20 @@ func TestDockFilePanelHasNoLocalPane(t *testing.T) {
 	b.remoteDir = "/"
 	b.remotePathInput = "/"
 	b.remoteEntries = []os.FileInfo{fakeInfo{name: "etc", dir: true}}
+	b.treeKids["/"] = []string{"/etc"}
+	b.treeLoaded["/"] = true
 	a.browsers[1] = b
 
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
-	if !tt.HasText("目录") {
-		t.Fatalf("remote tree pane missing; texts = %q", tt.Texts())
+	if _, ok := tt.Find("etc"); !ok {
+		t.Fatalf("remote tree entry missing; texts = %q", tt.Texts())
 	}
-	if !tt.HasText("etc") {
-		t.Fatalf("remote entries missing; texts = %q", tt.Texts())
+	if _, ok := tt.Find("etc/"); !ok {
+		t.Fatalf("remote file row missing; texts = %q", tt.Texts())
+	}
+	if _, ok := tt.Find("目录"); ok {
+		t.Fatalf("the tree header must be gone; texts = %q", tt.Texts())
 	}
 	if tt.HasText("本地") {
 		t.Fatalf("the local pane must be gone from SSH sessions; texts = %q", tt.Texts())
@@ -77,6 +83,8 @@ func newRemoteDockApp(t *testing.T) (*App, *fileBrowser, *ui.Tester) {
 		fakeInfo{name: "etc", dir: true},
 		fakeInfo{name: "notes.txt", size: 3},
 	}
+	b.treeKids["/"] = []string{"/etc"}
+	b.treeLoaded["/"] = true
 	a.browsers[1] = b
 
 	tt := ui.NewTester(a.View, 1440, 900)
@@ -84,35 +92,26 @@ func newRemoteDockApp(t *testing.T) (*App, *fileBrowser, *ui.Tester) {
 	return a, b, tt
 }
 
-func TestFileDockShowsTreeAndFullColumns(t *testing.T) {
+func TestFileDockKeepsTreeAndColumnsWithoutHeader(t *testing.T) {
 	_, _, tt := newRemoteDockApp(t)
-	for _, want := range []string{"目录", "类型", "权限", "用户/组", "Divider"} {
+	for _, want := range []string{"文件名", "类型", "权限", "用户/组"} {
 		if !tt.HasText(want) {
 			t.Fatalf("file dock missing %q; texts = %q", want, tt.Texts())
 		}
 	}
-	if tt.HasText("本地") {
-		t.Fatalf("the local pane must be gone from SSH sessions; texts = %q", tt.Texts())
+	if _, ok := tt.Find("目录"); ok {
+		t.Fatalf("the tree header must be gone; texts = %q", tt.Texts())
 	}
-}
-
-func TestFileTreeRowsAlignLeft(t *testing.T) {
-	_, b, tt := newRemoteDockApp(t)
-	b.treeKids["/"] = []string{"/etc"}
-	b.treeLoaded["/"] = true
-	b.treeOpen["/"] = true
-	tt.Frame()
-
-	label, ok := tt.Find("etc")
+	tree, ok := tt.Find("etc")
 	if !ok {
-		t.Fatalf("tree entry missing; texts = %q", tt.Texts())
+		t.Fatalf("remote tree entry missing; texts = %q", tt.Texts())
 	}
-	head, ok := tt.Find("目录")
+	table, ok := tt.Find("文件名")
 	if !ok {
-		t.Fatalf("tree header missing; texts = %q", tt.Texts())
+		t.Fatalf("file table missing; texts = %q", tt.Texts())
 	}
-	if label.X > head.X+70 {
-		t.Fatalf("tree entry starts at %.1f, header at %.1f: the rows are not left aligned", label.X, head.X)
+	if table.X < tree.X+100 {
+		t.Fatalf("tree at %.1f and table at %.1f do not form two columns", tree.X, table.X)
 	}
 }
 
@@ -130,39 +129,77 @@ func TestFileTableFillsDockWidth(t *testing.T) {
 	}
 }
 
-func TestFileTreeDividerResizes(t *testing.T) {
+func TestFileToolbarUpNavigatesToParent(t *testing.T) {
+	_, b, tt := newRemoteDockApp(t)
+	b.remoteDir = "/projects/jt808"
+	b.remotePathInput = b.remoteDir
+	tt.Frame()
+
+	if err := tt.Click("返回上一级"); err != nil {
+		t.Fatalf("up button: %v", err)
+	}
+	tt.Frame()
+	if b.remoteErr != "SFTP 不可用" {
+		t.Fatalf("up button did not navigate: err=%q", b.remoteErr)
+	}
+}
+
+func TestFileErrorIsShownOnce(t *testing.T) {
 	a, _, tt := newRemoteDockApp(t)
-	tt.SetSize(2100, 900)
+	a.fileErr = "测试提示"
 	tt.Frame()
 
-	head, ok := tt.Find("目录")
-	if !ok {
-		t.Fatalf("tree header missing; texts = %q", tt.Texts())
+	count := 0
+	for _, text := range tt.Texts() {
+		if text == "测试提示" {
+			count++
+		}
 	}
-	name, ok := tt.Find("文件名")
-	if !ok {
-		t.Fatalf("file header missing; texts = %q", tt.Texts())
+	if count != 1 {
+		t.Fatalf("file error shown %d times, want once", count)
 	}
+}
 
-	// The tree panel starts after the header's 9 DIP padding, 12 DIP icon
-	// and 6 DIP gap; its right edge is the split's divider.
-	treeLeft := head.X - 27
-	divider := treeLeft + a.fileSplit
-	y := head.Y + 80
-	tt.Press(divider+0.5, y)
-	tt.Move(divider+60.5, y)
-	tt.Release(divider+60.5, y)
+func TestChooseDownloadDestination(t *testing.T) {
+	a := New()
+	b := newFileBrowser(1, nil, t.TempDir(), "")
+	target := filepath.Join(t.TempDir(), "saved.sh")
+	old := saveDownloadDialog
+	defer func() { saveDownloadDialog = old }()
+
+	var got mygo.SaveDialogOptions
+	saveDownloadDialog = func(opts mygo.SaveDialogOptions) (string, error) {
+		got = opts
+		return target, nil
+	}
+	path, err := a.chooseDownloadDestination(b, fakeInfo{name: "consumer.sh"})
+	if err != nil {
+		t.Fatalf("choose destination: %v", err)
+	}
+	if path != target {
+		t.Fatalf("chosen path = %q, want %q", path, target)
+	}
+	wantDefault := filepath.Join(b.localDir, "consumer.sh")
+	if got.Title != "选择下载位置" || got.DefaultPath != wantDefault || got.ButtonLabel != "保存" {
+		t.Fatalf("dialog options = %+v, want the download default", got)
+	}
+}
+
+func TestTransferLogShowsDownloadPath(t *testing.T) {
+	a := New()
+	a.terms = []*termSession{{ID: 1, Title: "root@test"}}
+	a.syncTabs()
+	a.activeTerm = 0
+	a.bottomFiles = true
+	a.bottomFileTab = int(dockTransfers)
+	a.transferLog = []transferRecord{{
+		Label: "下载 consumer.sh", Target: `C:\Downloads\consumer.sh`, Done: 375, Total: 375,
+	}}
+
+	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
-
-	if a.fileSplit < 265 || a.fileSplit > 275 {
-		t.Fatalf("dragged the divider 60 DIPs right, tree width = %.1f", a.fileSplit)
-	}
-	moved, ok := tt.Find("文件名")
-	if !ok {
-		t.Fatalf("file header missing after drag; texts = %q", tt.Texts())
-	}
-	if moved.X < name.X+55 || moved.X > name.X+65 {
-		t.Fatalf("the file pane moved from %.1f to %.1f, want 60 DIPs", name.X, moved.X)
+	if !tt.HasText(`保存到 C:\Downloads\consumer.sh`) {
+		t.Fatalf("download path missing from transfer log; texts = %q", tt.Texts())
 	}
 }
 
@@ -289,6 +326,57 @@ func TestSingleClickFileOnlyChoosesIt(t *testing.T) {
 		t.Fatalf("clicking a file must not navigate: err=%q", b.remoteErr)
 	}
 }
+
+func TestFileTableSelectionUsesPaleBackground(t *testing.T) {
+	a, b, tt := newRemoteDockApp(t)
+	a.settings.Theme = 2
+	tt.Frame()
+	if err := clickText(tt, "notes.txt"); err != nil {
+		t.Fatalf("click file: %v", err)
+	}
+	if b.remoteSel != 1 {
+		t.Fatalf("file row not chosen: sel=%d", b.remoteSel)
+	}
+
+	label, ok := tt.Find("notes.txt")
+	if !ok {
+		t.Fatalf("selected row missing; texts = %q", tt.Texts())
+	}
+	// Sample the empty part of the selected row, clear of its icon and text.
+	c := tt.Image().RGBAAt(int(label.X+200), int(label.Y+label.H/2))
+	if c.R < 220 || c.G < 220 || c.B < 220 || c.B < c.R {
+		t.Fatalf("selected row background = rgba(%d,%d,%d,%d), want a pale blue wash", c.R, c.G, c.B, c.A)
+	}
+}
+
+func TestFileVisualsByType(t *testing.T) {
+	cases := []struct {
+		name string
+		dir  bool
+		mode os.FileMode
+		want *ui.SVG
+	}{
+		{"projects", true, 0, iconFolder},
+		{"deploy.sh", false, 0, iconFileScript},
+		{"main.go", false, 0, iconFileCode},
+		{"app.env", false, 0, iconFileConfig},
+		{"cover.png", false, 0, iconFileImage},
+		{"release.tar.gz", false, 0, iconFileArchive},
+		{"report.csv", false, 0, iconFileTable},
+		{"demo.mp4", false, 0, iconFileMedia},
+		{"README.md", false, 0, iconFileText},
+		{"current", false, os.ModeSymlink, iconLink},
+		{"server", false, 0o755, iconFileScript},
+		{"payload.bin", false, 0, iconFile},
+	}
+	for _, tc := range cases {
+		got, _ := fileVisual(fakeInfo{name: tc.name, dir: tc.dir, mode: tc.mode})
+		if got != tc.want {
+			t.Errorf("fileVisual(%q) chose the wrong icon", tc.name)
+		}
+	}
+}
+
 func TestHumanSize(t *testing.T) {
 	cases := map[int64]string{
 		0:           "0 B",
@@ -336,15 +424,16 @@ type fakeInfo struct {
 	name string
 	dir  bool
 	size int64
+	mode os.FileMode
 }
 
 func (f fakeInfo) Name() string { return f.name }
 func (f fakeInfo) Size() int64  { return f.size }
 func (f fakeInfo) Mode() os.FileMode {
 	if f.dir {
-		return os.ModeDir
+		return os.ModeDir | f.mode
 	}
-	return 0
+	return f.mode
 }
 func (f fakeInfo) ModTime() time.Time { return time.Time{} }
 func (f fakeInfo) IsDir() bool        { return f.dir }

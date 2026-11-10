@@ -174,8 +174,8 @@ func (a *App) dockFilesPanel(c *ui.Context, t *ui.Theme) {
 			a.localPane(c, b, t)
 			return
 		}
-		// SSH sessions show the FinalShell-style remote browser: directory
-		// tree, breadcrumb and the remote file table.
+		// SSH sessions show the remote browser: a full-width breadcrumb
+		// above the directory tree and file table.
 		a.bottomFilesPane(c, t, b)
 	})
 }
@@ -281,6 +281,10 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 								ui.Text(c, "").Grow(1)
 								ui.Text(c, fmt.Sprintf("%d%%", pct)).FontSize(9).Font("Cascadia Code").TextColor(colCyan)
 							})
+							if tr.target != "" {
+								ui.Text(c, "保存到 "+shortLabel(tr.target, 86)).FontSize(8.3).
+									Font("Cascadia Code").TextColor(colMuted2).NoWrap()
+							}
 							ui.Progress(c, float64(pct)/100).FillWidth().Height(3)
 						})
 						if ghostAction(c, t, "transfer-cancel", "取消", nil).Clicked() && tr.cancel != nil {
@@ -292,10 +296,15 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 
 			for i, rec := range a.transferLog {
 				rec := rec
-				ui.Row(c).Height(30).Gap(9).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).MinHeight(30).Gap(9).AlignItems(ui.Center).Children(func() {
 					iconEl(c, transferIcon(rec.Label), 12, condColor(rec.Err == "", colGreen, colRed))
-					ui.Text(c, shortLabel(rec.Label, 44)).FontSize(9.5).TextColor(colMuted).NoWrap()
-					ui.Text(c, "").Grow(1)
+					ui.Column(c).Grow(1).Gap(1).Children(func() {
+						ui.Text(c, shortLabel(rec.Label, 44)).FontSize(9.5).TextColor(colMuted).NoWrap()
+						if rec.Target != "" {
+							ui.Text(c, "保存到 "+shortLabel(rec.Target, 86)).FontSize(8.2).
+								Font("Cascadia Code").TextColor(colMuted2).NoWrap()
+						}
+					})
 					if rec.Total > 0 {
 						ui.Text(c, humanSize(rec.Done)+" / "+humanSize(rec.Total)).FontSize(8.5).
 							Font("Cascadia Code").TextColor(colMuted2).NoWrap()

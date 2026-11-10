@@ -9,18 +9,11 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// bottomFilesPane is the FinalShell-style file dock: a directory tree on the
-// left, the breadcrumb and actions on top of the remote file table on the
+// bottomFilesPane is the FinalShell-style file dock: a full-width breadcrumb
+// bar above a directory tree on the left and the remote file table on the
 // right. A single click on a folder row opens it.
 func (a *App) bottomFilesPane(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	// The tree and the file table share the dock's width; the divider
-	// between them resizes the tree, and a double click restores its
-	// default width.
-	ui.Split(c, &a.fileSplit, func() {
-		a.bottomFileTree(c, t, b)
-	}, func() {
-		a.bottomFileContent(c, t, b)
-	}).Grow(1).FillWidth().SplitReset(210)
+	a.bottomFileContent(c, t, b)
 }
 
 func (a *App) bottomFileContent(c *ui.Context, t *ui.Theme, b *fileBrowser) {
@@ -33,44 +26,56 @@ func (a *App) bottomFileContent(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 		if a.transfer != nil {
 			a.transferBar(c, t)
 		}
-		if a.fileErr != "" {
-			ui.Text(c, shortLabel(a.fileErr, 100)).FontSize(9).TextColor(colRed).Padding(2, 12)
-		}
 		if b.remoteErr != "" {
 			ui.Text(c, shortLabel(b.remoteErr, 100)).FontSize(9).TextColor(colRed).Padding(2, 12)
 		}
 
+		ui.Split(c, &a.fileSplit, func() {
+			a.bottomFileTree(c, t, b)
+		}, func() {
+			a.bottomFileTable(c, t, b)
+		}).Grow(1).FillWidth().SplitReset(210)
+	})
+}
+
+func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
+	ui.Column(c).FillWidth().FillHeight().Children(func() {
 		wide := a.dockFileTableWide(c)
 		cols := bottomFileColumns()
 		if wide {
 			cols = fileColumns()
 		}
 		opened := false
-		table := ui.Table(c, &b.remoteState, cols, len(b.remoteEntries), func(row, col int) {
-			if row < 0 || row >= len(b.remoteEntries) {
-				return
-			}
-			f := b.remoteEntries[row]
-			cell := ui.Box(c).Fill().OnClick(func() {
-				a.clickRemoteRow(b, row)
-			})
-			cell.ContextMenu(func(m *ui.Menu) {
-				b.remoteSel = row
-				a.fileContextMenu(m, b, true)
-			})
-			if !f.IsDir() && cell.DoubleClicked() {
-				b.remoteSel = row
-				a.openRemoteSelected(b)
-				opened = true
-			}
-			cell.Children(func() {
-				if wide {
-					remoteCell(c, b, row, col)
-				} else {
-					bottomRemoteCell(c, b, row, col)
+		tableTheme := fileTableTheme(t)
+		var table ui.Element
+		ui.Themed(c, tableTheme).Grow(1).FillWidth().Background(ui.Transparent).Children(func() {
+			table = ui.Table(c, &b.remoteState, cols, len(b.remoteEntries), func(row, col int) {
+				if row < 0 || row >= len(b.remoteEntries) {
+					return
 				}
+				f := b.remoteEntries[row]
+				cell := ui.Box(c).Fill().OnClick(func() {
+					a.clickRemoteRow(b, row)
+				})
+				cell.ContextMenu(func(m *ui.Menu) {
+					b.remoteSel = row
+					a.fileContextMenu(m, b, true)
+				})
+				if !f.IsDir() && cell.DoubleClicked() {
+					b.remoteSel = row
+					a.openRemoteSelected(b)
+					opened = true
+				}
+				cell.Children(func() {
+					if wide {
+						remoteCell(c, b, row, col)
+					} else {
+						bottomRemoteCell(c, b, row, col)
+					}
+				})
 			})
-		}).Grow(1)
+			table.Grow(1)
+		})
 		table.ContextMenu(func(m *ui.Menu) {
 			a.fileBackgroundMenu(m, b, true)
 		})
@@ -150,6 +155,11 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 
 		if paneIconButton(c, t, "bf-act-refresh", iconRefresh, "刷新").Clicked() {
 			b.loadRemote()
+		}
+		upTop := paneIconButton(c, t, "bf-act-up", iconArrowUp, "返回上一级")
+		upTop.Disabled(b.remoteDir == "/")
+		if upTop.Clicked() {
+			a.navigateRemote(b, path.Dir(b.remoteDir))
 		}
 		if paneIconButton(c, t, "bf-act-new", iconNewFolder, "新建文件夹").Clicked() {
 			a.promptMkdir(b, true)
@@ -267,20 +277,6 @@ func (a *App) pathCrumb(c *ui.Context, t *ui.Theme, b *fileBrowser, label, targe
 
 func (a *App) bottomFileTree(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 	ui.Column(c).FillWidth().FillHeight().Background(colTreeBg).Children(func() {
-		ui.Row(c).Height(32).Shrink(0).Padding(0, 9).Gap(6).AlignItems(ui.Center).
-			BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
-			iconEl(c, iconFolder, 12, colMuted2)
-			ui.Text(c, "目录").FontSize(9.5).FontWeight(650).LetterSpacing(0.4).
-				TextColor(colMuted2).NoWrap()
-			ui.Text(c, "").Grow(1)
-			label := "SFTP"
-			if ts := a.activeTerminal(); ts != nil {
-				label = shortLabel(ts.Title, 16)
-			}
-			ui.Text(c, label).FontSize(8.5).Font("Cascadia Code").
-				TextColor(colMuted2).NoWrap()
-		})
-
 		ui.Column(c).Grow(1).Padding(5).Children(func() {
 			ui.Scroll(c).Grow(1).Gap(1).Children(func() {
 				a.treeDirRow(c, t, b, "/", 0)

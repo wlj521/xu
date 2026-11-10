@@ -105,36 +105,14 @@ func TestNewAndEditConnectionContexts(t *testing.T) {
 	}
 }
 
-func TestFileTreeShowsServerPaths(t *testing.T) {
+func TestFilePathBarShowsServerPath(t *testing.T) {
 	a := New()
 	b := &fileBrowser{
 		remoteDir:  "/root",
 		remoteHome: "/root",
-		treeOpen:   map[string]bool{"/": true},
-		treeLoaded: map[string]bool{"/": true, "/root": true},
-		treeKids: map[string][]string{
-			"/":     {"/etc", "/root"},
-			"/root": {},
-		},
-		treeErr: map[string]string{},
 	}
 
 	tt := ui.NewTester(func(c *ui.Context) {
-		theme := a.applyTheme(c)
-		a.bottomFileTree(c, theme, b)
-	}, 240, 420)
-	tt.Frame()
-
-	if !tt.HasText("root") || !tt.HasText("etc") {
-		t.Fatalf("remote tree nodes missing; texts = %q", tt.Texts())
-	}
-	if tt.HasText("主目录") || tt.HasText("根目录") {
-		t.Fatalf("tree still uses ambiguous labels: %q", tt.Texts())
-	}
-
-	// The full path is carried by the breadcrumb bar above the file table,
-	// while the tree shows short, scannable folder names.
-	tt = ui.NewTester(func(c *ui.Context) {
 		theme := a.applyTheme(c)
 		a.bottomPathBar(c, theme, b)
 	}, 420, 60)

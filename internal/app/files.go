@@ -51,6 +51,7 @@ type fileBrowser struct {
 type transferState struct {
 	id     int64
 	label  string
+	target string
 	done   int64
 	total  int64
 	cancel context.CancelFunc
@@ -58,10 +59,15 @@ type transferState struct {
 
 type transferRecord struct {
 	Label    string
+	Target   string
 	Done     int64
 	Total    int64
 	Err      string
 	Canceled bool
+}
+
+var saveDownloadDialog = func(opts mygo.SaveDialogOptions) (string, error) {
+	return mygo.Dialog.Save(opts)
 }
 
 func newFileBrowser(termID int64, client *sftp.Client, localDir, remoteHome string) *fileBrowser {
@@ -248,19 +254,16 @@ func (a *App) localPane(c *ui.Context, b *fileBrowser, t *ui.Theme) {
 			ui.Text(c, shortLabel(b.localErr, 90)).FontSize(9).TextColor(colRed).Padding(2, 10)
 		}
 
-		tableTheme := *t
+		tableTheme := fileTableTheme(t)
 		tableTheme.FontSize = 9
 		tableTheme.TextMuted = colMuted2
-		tableTheme.Accent = colAccentSoft
-		tableTheme.AccentText = colText
-		tableTheme.Focus = colAccentLine
 		b.localState.CellMenu = func(m *ui.Menu, row, col int) {
 			if row >= 0 && row < len(b.localEntries) {
 				b.localSel = row
 			}
 			a.fileContextMenu(m, b, false)
 		}
-		ui.Themed(c, &tableTheme).Grow(1).Background(ui.Transparent).
+		ui.Themed(c, tableTheme).Grow(1).Background(ui.Transparent).
 			ContextMenu(func(m *ui.Menu) { a.fileBackgroundMenu(m, b, false) }).Children(func() {
 			if ui.Table(c, &b.localState, bottomFileColumns(), len(b.localEntries), func(row, col int) {
 				if row >= 0 && row < len(b.localEntries) {
@@ -541,6 +544,16 @@ func bottomFileColumns() []ui.TableColumn {
 	}
 }
 
+// fileTableTheme keeps row selection quiet: a translucent accent wash with
+// normal text, instead of the bright accent fill used by primary controls.
+func fileTableTheme(t *ui.Theme) *ui.Theme {
+	tableTheme := *t
+	tableTheme.Accent = colAccentSoft
+	tableTheme.AccentText = colText
+	tableTheme.Focus = colAccentLine
+	return &tableTheme
+}
+
 func bottomRemoteCell(c *ui.Context, b *fileBrowser, row, col int) {
 	if row < 0 || row >= len(b.remoteEntries) {
 		return
@@ -568,24 +581,72 @@ func fileKind(f os.FileInfo) string {
 	}
 }
 
+func fileVisual(f os.FileInfo) (*ui.SVG, ui.Color) {
+	switch {
+	case f.IsDir():
+		return iconFolder, colAmber
+	case f.Mode()&os.ModeSymlink != 0:
+		return iconLink, colFileLink
+	}
+
+	name := strings.ToLower(f.Name())
+	ext := path.Ext(name)
+	switch {
+	case strings.HasPrefix(name, ".env"):
+		return iconFileConfig, colViolet
+	case name == "makefile" || name == "dockerfile" || name == "containerfile" ||
+		name == "cmakelists.txt" || name == ".gitignore" || name == ".dockerignore":
+		return iconFileConfig, colViolet
+	}
+	switch ext {
+	case ".sh", ".bash", ".zsh", ".fish", ".ps1", ".bat", ".cmd", ".py", ".pl", ".rb", ".lua":
+		return iconFileScript, colGreen
+	case ".go", ".rs", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".java", ".kt", ".kts",
+		".swift", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".svelte", ".cs", ".php",
+		".dart", ".scala", ".sql":
+		return iconFileCode, colCyan
+	case ".json", ".yaml", ".yml", ".toml", ".ini", ".conf", ".cfg", ".config", ".env",
+		".properties", ".xml", ".plist", ".lock", ".mod", ".sum", ".gradle", ".cmake":
+		return iconFileConfig, colViolet
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".bmp", ".tif", ".tiff", ".avif":
+		return iconFileImage, colBlue
+	case ".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar", ".jar", ".war", ".ear",
+		".deb", ".rpm", ".apk", ".iso":
+		return iconFileArchive, colAmber
+	case ".csv", ".tsv", ".xls", ".xlsx", ".ods":
+		return iconFileTable, colGreen
+	case ".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".opus", ".mp4", ".mkv", ".mov",
+		".avi", ".webm", ".wmv", ".m4v":
+		return iconFileMedia, colViolet
+	case ".txt", ".md", ".markdown", ".log", ".rst", ".nfo", ".text", ".pdf",
+		".doc", ".docx", ".odt", ".rtf":
+		return iconFileText, colMuted
+	}
+	if f.Mode().Perm()&0o111 != 0 {
+		return iconFileScript, colGreen
+	}
+	return iconFile, colMuted
+}
+
+func fileTypeIcon(c *ui.Context, f os.FileInfo) ui.Element {
+	icon, color := fileVisual(f)
+	tile := ui.Box(c).Size(20, 20).Shrink(0).Radius(5).
+		Background(color.Alpha(0.11)).Center()
+	tile.Children(func() {
+		iconEl(c, icon, 13, color)
+	})
+	return tile
+}
+
 func fileCell(c *ui.Context, f os.FileInfo, owner string, col int) {
 	switch col {
 	case 0:
-		icon := iconFile
-		color := colBlue
-		if f.IsDir() {
-			icon = iconFolder
-			color = colAmber
-		} else if f.Mode()&os.ModeSymlink != 0 {
-			icon = iconLink
-			color = colFileLink
-		}
 		name := f.Name()
 		if f.IsDir() {
 			name += "/"
 		}
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			iconEl(c, icon, 13, color)
+		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+			fileTypeIcon(c, f)
 			ui.Text(c, name).FontSize(11).Font("Cascadia Code").TextColor(colText2).NoWrap()
 		})
 	case 1:
@@ -841,20 +902,45 @@ func (a *App) downloadSelected(b *fileBrowser) {
 		return
 	}
 
+	local, err := a.chooseDownloadDestination(b, f)
+	if err != nil {
+		a.fileErr = "无法选择下载位置: " + err.Error()
+		return
+	}
+	if local == "" {
+		return
+	}
+	local = filepath.Clean(local)
+	b.localDir = filepath.Dir(local)
+
 	remote := path.Join(b.remoteDir, f.Name())
-	local := filepath.Join(b.localDir, safeLocalName(f.Name()))
-	a.startTransfer("下载 "+f.Name(), func(ctx context.Context, report func(int64, int64)) error {
+	a.startTransferTo("下载 "+f.Name(), local, func(ctx context.Context, report func(int64, int64)) error {
 		return downloadFile(ctx, b.client, remote, local, report)
 	}, func() {
 		b.loadLocal()
 	})
 }
 
+func (a *App) chooseDownloadDestination(b *fileBrowser, f os.FileInfo) (string, error) {
+	return saveDownloadDialog(mygo.SaveDialogOptions{
+		Parent:            a.win,
+		Title:             "选择下载位置",
+		DefaultPath:       filepath.Join(b.localDir, safeLocalName(f.Name())),
+		ButtonLabel:       "保存",
+		Message:           "选择远程文件保存到本机的位置",
+		CreateDirectories: true,
+	})
+}
+
 func (a *App) startTransfer(label string, work func(context.Context, func(int64, int64)) error, done func()) {
+	a.startTransferTo(label, "", work, done)
+}
+
+func (a *App) startTransferTo(label, target string, work func(context.Context, func(int64, int64)) error, done func()) {
 	id := a.nextTransferID
 	a.nextTransferID++
 	ctx, cancel := context.WithCancel(a.ctx)
-	a.transfer = &transferState{id: id, label: label, cancel: cancel}
+	a.transfer = &transferState{id: id, label: label, target: target, cancel: cancel}
 	a.fileErr = ""
 
 	go func() {
@@ -881,13 +967,17 @@ func (a *App) startTransfer(label string, work func(context.Context, func(int64,
 					a.fileErr = "传输失败: " + err.Error()
 				}
 				a.addTransferLog(transferRecord{
-					Label: label, Done: doneBytes, Total: totalBytes, Err: err.Error(),
+					Label: label, Target: target, Done: doneBytes, Total: totalBytes, Err: err.Error(),
 					Canceled: errors.Is(err, context.Canceled),
 				})
 				return
 			}
-			a.addTransferLog(transferRecord{Label: label, Done: doneBytes, Total: totalBytes})
-			a.status = label + "完成"
+			a.addTransferLog(transferRecord{Label: label, Target: target, Done: doneBytes, Total: totalBytes})
+			if target != "" {
+				a.status = label + "完成 · " + shortLabel(target, 70)
+			} else {
+				a.status = label + "完成"
+			}
 			if done != nil {
 				done()
 			}
