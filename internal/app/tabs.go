@@ -13,14 +13,17 @@ type tabKind int
 const (
 	tabTerminal tabKind = iota
 	tabQuickConnect
+	tabConnecting
 )
 
 // appTab is one entry of the top tab strip. Terminal tabs point at their
-// session, quick-connect tabs show the saved connections of the profile store.
+// session, quick-connect tabs show the saved connections of the profile
+// store, and connecting tabs hold a dial that becomes a terminal.
 type appTab struct {
 	id   int64
 	kind tabKind
 	term *termSession
+	conn *connectingTab
 }
 
 func (a *App) newTabID() int64 {
@@ -181,7 +184,7 @@ func (a *App) syncTabs() {
 			a.activeTerm = idx
 		}
 	}
-	if a.activeTabRef() != nil && a.activeTabRef().kind == tabQuickConnect {
+	if front := a.activeTabRef(); front != nil && (front.kind == tabQuickConnect || front.kind == tabConnecting) {
 		a.activeTerm = -1
 	}
 }
@@ -191,6 +194,12 @@ func (a *App) syncTabs() {
 func (a *App) tabTitle(tab *appTab) string {
 	if tab == nil {
 		return ""
+	}
+	if tab.kind == tabConnecting {
+		if tab.conn != nil {
+			return profileDisplayName(tab.conn.profile)
+		}
+		return "新标签页"
 	}
 	if tab.kind == tabQuickConnect || tab.term == nil {
 		return "新标签页"
@@ -269,6 +278,12 @@ func (a *App) tabDisplayTitle(tab *appTab) string {
 }
 
 func (a *App) tabDotColor(tab *appTab) ui.Color {
+	if tab != nil && tab.kind == tabConnecting {
+		if tab.conn != nil && tab.conn.err != "" {
+			return colRed
+		}
+		return colCyan
+	}
 	if tab == nil || tab.kind == tabQuickConnect {
 		return colCyan
 	}
@@ -294,8 +309,25 @@ func (a *App) closeTabIndex(i int) {
 	tab := a.tabs[i]
 	a.tabs = append(a.tabs[:i], a.tabs[i+1:]...)
 
-	if tab.kind == tabTerminal && tab.term != nil {
-		a.closeTermSession(tab.term)
+	switch tab.kind {
+	case tabTerminal:
+		if tab.term != nil {
+			a.closeTermSession(tab.term)
+		}
+	case tabConnecting:
+		// Closing the tab is how the user cancels a dial: cancel it, and
+		// clear the progress state when this tab owns the in-flight connect.
+		if tab.conn != nil && tab.conn.cancel != nil {
+			tab.conn.cancel()
+		}
+		if a.connTabID == tab.id {
+			a.stopConnectTimer()
+			a.connecting = false
+			a.connectingProfileID = 0
+			a.pendingQuickTab = 0
+			a.connTabID = 0
+			a.status = ""
+		}
 	}
 
 	if len(a.tabs) == 0 {
@@ -368,6 +400,10 @@ func (a *App) duplicateTab(tab *appTab) {
 		a.status = "已复制快速连接标签"
 		return
 	}
+	if tab.kind == tabConnecting {
+		a.status = "标签正在连接，请稍候"
+		return
+	}
 	ts := tab.term
 	if ts == nil {
 		return
@@ -432,6 +468,14 @@ func (a *App) connectTab(tab *appTab) {
 	if idx := a.tabIndexByID(tab.id); idx >= 0 {
 		a.activateTabIndex(idx)
 	}
+	if tab.kind == tabConnecting {
+		if tab.conn != nil && tab.conn.err != "" {
+			a.retryConnectingTab(tab)
+			return
+		}
+		a.status = "标签正在连接，请稍候"
+		return
+	}
 	if tab.kind != tabTerminal || tab.term == nil {
 		a.status = "快速连接页无需连接"
 		return
@@ -478,6 +522,10 @@ func (a *App) connectAllTabs() {
 }
 
 func (a *App) disconnectTab(tab *appTab) {
+	if tab != nil && tab.kind == tabConnecting {
+		a.status = "连接尚未建立"
+		return
+	}
 	if tab == nil || tab.kind != tabTerminal || tab.term == nil {
 		a.status = "当前标签无法断开"
 		return
@@ -573,6 +621,10 @@ func (a *App) tabWidth(c *ui.Context, i int, tab *appTab) float32 {
 	w := float32(63) + numW + nameW
 	if tab.kind == tabQuickConnect {
 		chipW, _ := c.MeasureText(0, ui.Span{Text: "快速连接", Size: 8})
+		w += 6 + chipW
+	}
+	if tab.kind == tabConnecting {
+		chipW, _ := c.MeasureText(0, ui.Span{Text: "连接中", Size: 8})
 		w += 6 + chipW
 	}
 	return w
@@ -673,6 +725,16 @@ func (a *App) tabStrip(c *ui.Context, t *ui.Theme) {
 							ui.Box(c).Height(16).Padding(0, 4).Radius(3).
 								Background(colCyan.Alpha(0.07)).Center().Children(func() {
 								ui.Text(c, "快速连接").FontSize(8).TextColor(colCyan.Alpha(0.9)).NoWrap()
+							})
+						}
+						if tab.kind == tabConnecting {
+							chip, tint := "连接中", colCyan
+							if tab.conn != nil && tab.conn.err != "" {
+								chip, tint = "失败", colRed
+							}
+							ui.Box(c).Height(16).Padding(0, 4).Radius(3).
+								Background(tint.Alpha(0.07)).Center().Children(func() {
+								ui.Text(c, chip).FontSize(8).TextColor(tint.Alpha(0.9)).NoWrap()
 							})
 						}
 						closeLabel := "关闭 " + title

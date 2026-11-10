@@ -50,6 +50,10 @@ func (a *App) inspectorMonitorHead(c *ui.Context, t *ui.Theme) {
 				live = true
 			}
 		}
+	} else if p, ok := a.activeConnectingProfile(); ok {
+		// The session does not exist yet, but the target is already known.
+		sub = p.Host
+		host = p.Host
 	}
 
 	ui.Column(c).Shrink(0).Padding(6, 9, 7, 12).Gap(3).
@@ -144,7 +148,10 @@ func (a *App) inspectorContent(c *ui.Context, t *ui.Theme) {
 	if ts == nil {
 		title := "未连接"
 		sub := "点顶部 + 新建标签页，从快速连接里选择服务器"
-		if a.quickTabActive() {
+		if p, ok := a.activeConnectingProfile(); ok {
+			title = "正在连接 " + profileDisplayName(p)
+			sub = "连接成功后在这里显示 CPU、内存、磁盘与网络"
+		} else if a.quickTabActive() {
 			title = "快速连接"
 			sub = "点击连接卡片打开终端；连上后会在这里显示实时监控"
 		}
@@ -372,6 +379,19 @@ func (a *App) inspectorTabs(c *ui.Context, t *ui.Theme) {
 func (a *App) inspectorServer(c *ui.Context, t *ui.Theme) {
 	ts := a.activeTerminal()
 	if ts == nil {
+		if p, ok := a.activeConnectingProfile(); ok {
+			ui.Column(c).Grow(1).Fill().Center().Gap(9).Padding(24).Children(func() {
+				ui.Box(c).Size(56, 56).Radius(16).
+					Background(colCyan.Alpha(0.08)).Border(1, colCyan.Alpha(0.22)).Center().Children(func() {
+					iconEl(c, iconServer, 24, colCyan)
+				})
+				ui.Text(c, "正在连接 "+shortLabel(profileDisplayName(p), 22)).FontSize(fsBody).FontWeight(600)
+				ui.Text(c, fmt.Sprintf("%s@%s:%d", p.Username, p.Host, p.Port)).
+					FontSize(9.8).Font("Cascadia Code").TextColor(colMuted)
+				ui.Text(c, a.connectProgressText()).FontSize(9.5).TextColor(colMuted2)
+			})
+			return
+		}
 		ui.Column(c).Grow(1).Fill().Center().Gap(9).Padding(24).Children(func() {
 			ui.Box(c).Size(56, 56).Radius(16).
 				Background(colPanel2.Alpha(0.6)).Border(1, colLine).Center().Children(func() {

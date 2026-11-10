@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 
 	"golang.org/x/crypto/ssh"
@@ -9,16 +10,22 @@ import (
 )
 
 func (a *App) dialWithPrompt(p sshx.Profile) (*ssh.Client, error) {
-	client, err := sshx.Dial(a.ctx, p, a.trustHost)
+	return a.dialWithPromptCtx(a.ctx, p, nil)
+}
+
+// dialWithPromptCtx dials with its own context, so closing a connecting tab
+// can cancel that dial, and reports its phases to the connecting page.
+func (a *App) dialWithPromptCtx(ctx context.Context, p sshx.Profile, progress sshx.PhaseFunc) (*ssh.Client, error) {
+	client, err := sshx.DialWithProgress(ctx, p, a.trustHost, progress)
 
 	var hk *sshx.HostKeyError
 	if errors.As(err, &hk) {
-		if a.confirmHostKey(hk) {
+		if a.confirmHostKey(ctx, hk) {
 			a.trustMu.Lock()
 			a.trusted[hk.Host] = hk.Fingerprint
 			a.trustMu.Unlock()
 			a.post(func() { a.saveKnownHost(hk) })
-			client, err = sshx.Dial(a.ctx, p, a.trustHost)
+			client, err = sshx.DialWithProgress(ctx, p, a.trustHost, progress)
 		}
 	}
 	return client, err

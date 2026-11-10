@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -216,7 +217,7 @@ func TestAskHostKeyWithoutWindowDeclines(t *testing.T) {
 	a := New()
 	done := make(chan bool, 1)
 	go func() {
-		done <- a.askHostKey(&sshx.HostKeyError{
+		done <- a.askHostKey(context.Background(), &sshx.HostKeyError{
 			Host:        "example.com:22",
 			Fingerprint: hostKeyTestFingerprint,
 		})

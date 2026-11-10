@@ -94,12 +94,12 @@ func (a *App) quickToolbar(c *ui.Context, t *ui.Theme) {
 func (a *App) quickStatus(c *ui.Context, t *ui.Theme) {
 	if a.connecting {
 		name := "服务器"
-		sub := "正在协商算法与认证"
+		sub := a.connectProgressText()
 		if p := a.qcProfileByID(a.connectingProfileID); p != nil {
 			if p.Name != "" {
 				name = p.Name
 			}
-			sub = fmt.Sprintf("%s@%s:%d · 正在协商算法与认证", p.Username, p.Host, p.Port)
+			sub = fmt.Sprintf("%s@%s:%d · %s", p.Username, p.Host, p.Port, a.connectProgressText())
 		}
 		ui.Box(c).FillWidth().Padding(11, 13).Radius(8).
 			Background(colCyan.Alpha(0.07)).Border(1, colCyan.Alpha(0.22)).Children(func() {

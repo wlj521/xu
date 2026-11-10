@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -40,7 +41,6 @@ type App struct {
 	monitorCollapsed bool // left-hand server monitor collapsed to its rail
 	formOpen         bool
 	pickerOpen       bool
-	directConnect    bool
 	systemDark       bool
 
 	settingsSection int
@@ -57,6 +57,14 @@ type App struct {
 	connectingProfileID int64
 	connectErr          string
 	status              string
+
+	// The in-flight connect is shown on a connecting tab (connTabID) or in
+	// the form the user submitted. connPhase and connStarted drive its
+	// progress line; connTicker asks for frames so the elapsed time ticks.
+	connTabID   int64
+	connPhase   sshx.Phase
+	connStarted time.Time
+	connTicker  chan struct{}
 
 	terms      []*termSession
 	activeTerm int
@@ -416,16 +424,10 @@ func (a *App) connect() {
 	if err != nil {
 		a.connectErr = err.Error()
 		a.status = "连接失败: " + err.Error()
-		if a.directConnect {
-			a.formOpen = true
-			a.directConnect = false
-		}
 		a.connectingProfileID = 0
 		return
 	}
 	p.Password = a.effectivePassword()
-	direct := a.directConnect
-	a.directConnect = false
 	if tab := a.activeTabRef(); tab != nil && tab.kind == tabQuickConnect {
 		a.pendingQuickTab = tab.id
 	} else {
@@ -435,25 +437,58 @@ func (a *App) connect() {
 	a.connectErr = ""
 	a.connecting = true
 	a.status = "正在连接 " + p.Username + "@" + p.Host + "…"
-	go a.doConnect(p, direct)
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.startConnectTimer(0)
+	go a.doConnect(ctx, cancel, p, nil)
 }
 
-func (a *App) doConnect(p sshx.Profile, direct bool) {
+func (a *App) doConnect(ctx context.Context, cancel context.CancelFunc, p sshx.Profile, tab *appTab) {
+	defer cancel()
+
+	tabID := int64(0)
+	if tab != nil {
+		tabID = tab.id
+	}
+
 	fail := func(msg string) {
 		a.post(func() {
+			a.stopConnectTimer()
 			a.connecting = false
 			a.connectingProfileID = 0
 			a.pendingQuickTab = 0
+			a.connTabID = 0
+
+			if tab != nil {
+				idx := a.tabIndexByID(tab.id)
+				if idx < 0 || a.tabs[idx] != tab || tab.conn == nil {
+					// The connecting tab was closed, taking the failure with
+					// it; do not shout at whatever tab is in front now.
+					return
+				}
+				tab.conn.err = msg
+				tab.conn.cancel = nil
+			}
+
 			a.connectErr = msg
 			a.status = "连接失败: " + shortLabel(msg, 60)
-			if direct {
-				a.formOpen = true
-			}
 		})
 	}
 
-	client, err := a.dialWithPrompt(p)
+	progress := func(ph sshx.Phase) {
+		a.post(func() {
+			if !a.connecting || a.connTabID != tabID {
+				return
+			}
+			a.connPhase = ph
+		})
+	}
+
+	client, err := a.dialWithPromptCtx(ctx, p, progress)
 	if err != nil {
+		if ctx.Err() != nil {
+			// Cancelled by closing the connecting tab or the app.
+			return
+		}
 		fail(err.Error())
 		return
 	}
@@ -465,35 +500,75 @@ func (a *App) doConnect(p sshx.Profile, direct bool) {
 		return
 	}
 
+	if ctx.Err() != nil {
+		ts.Close()
+		return
+	}
+
 	a.post(func() {
-		a.terms = append(a.terms, ts)
-		a.attachSessionTab(ts)
-		a.formOpen = false
-		a.managerOpen = false
-		a.filesOpen = false
-		a.monitorOpen = false
-		a.forwardOpen = false
-		a.batchOpen = false
-		a.settingsOpen = false
+		// front tells whether the finished session is on the tab the user is
+		// looking at: a dial that finishes in the background must not steal
+		// focus or reset the front tab's layout.
+		front := true
+		origin := int64(0)
+		if tab != nil {
+			idx := a.tabIndexByID(tab.id)
+			if idx < 0 || a.tabs[idx] != tab {
+				// The user closed the connecting tab while the shell was
+				// opening; drop the session instead of opening a stray tab.
+				ts.Close()
+				return
+			}
+			if tab.conn != nil {
+				origin = tab.conn.origin
+			}
+			front = a.activeTab == idx
+			a.tabs[idx] = &appTab{id: tab.id, kind: tabTerminal, term: ts}
+			a.terms = append(a.terms, ts)
+			if front {
+				a.activeTab = idx
+				a.activeTerm = a.termIndex(ts)
+			}
+		} else {
+			a.terms = append(a.terms, ts)
+			a.attachSessionTab(ts)
+		}
+
+		// The quick-connect page that started this connection has done its
+		// job; close it now (a failure leaves it open for another try).
+		a.closeConnectOrigin(origin)
+
+		a.stopConnectTimer()
+		a.connTabID = 0
 		a.connecting = false
 		a.connectingProfileID = 0
-		a.finding = false
-		a.resetFind()
+		a.pendingQuickTab = 0
+		a.password = ""
+		a.connectErr = ""
+		a.hostKeyHost = ""
+		a.hostKeyFingerprint = ""
 		a.saveCurrentProfile(p)
 		ts.profileID = a.profileID
 		a.autoStartForwards(ts)
 		a.startMonitorBackground(ts)
-		a.inspectorTab = 0
-		a.bottomFiles = true
-		a.bottomFileTab = 0
-		a.splitPercent = 64
-		a.commandInput = ""
-		a.password = ""
-		a.connectErr = ""
-		a.directConnect = false
-		a.hostKeyHost = ""
-		a.hostKeyFingerprint = ""
-		a.status = ""
+
+		if front {
+			a.formOpen = false
+			a.managerOpen = false
+			a.filesOpen = false
+			a.monitorOpen = false
+			a.forwardOpen = false
+			a.batchOpen = false
+			a.settingsOpen = false
+			a.finding = false
+			a.resetFind()
+			a.inspectorTab = 0
+			a.bottomFiles = true
+			a.bottomFileTab = 0
+			a.splitPercent = 64
+			a.commandInput = ""
+			a.status = ""
+		}
 	})
 }
 
@@ -503,8 +578,8 @@ func (a *App) trustHost(host, fingerprint string) bool {
 	return a.trusted[host] == fingerprint
 }
 
-func (a *App) confirmHostKey(hk *sshx.HostKeyError) bool {
-	return a.askHostKey(hk)
+func (a *App) confirmHostKey(ctx context.Context, hk *sshx.HostKeyError) bool {
+	return a.askHostKey(ctx, hk)
 }
 
 func (a *App) saveKnownHost(hk *sshx.HostKeyError) {
@@ -577,6 +652,20 @@ func (a *App) editProfile(p store.Profile) {
 	if a.finding {
 		a.closeFind()
 	}
+	a.applyProfile(p)
+	a.connectErr = ""
+	a.status = ""
+	a.saveProfile = true
+	a.formOpen = true
+	a.managerOpen = false
+	a.pickerOpen = false
+	a.batchOpen = false
+	a.settingsOpen = false
+}
+
+// applyProfile loads a saved profile into the form state the connect path
+// reads, so a card click, a retry and the editor all agree on the target.
+func (a *App) applyProfile(p store.Profile) {
 	a.profileID = p.ID
 	a.profileName = p.Name
 	a.host = p.Host
@@ -584,15 +673,6 @@ func (a *App) editProfile(p store.Profile) {
 	a.username = p.Username
 	a.password = ""
 	a.groupChoice = a.groupNameByID(p.GroupID)
-	a.connectErr = ""
-	a.status = ""
-	a.saveProfile = true
-	a.formOpen = true
-	a.managerOpen = false
-	a.pickerOpen = false
-	a.directConnect = false
-	a.batchOpen = false
-	a.settingsOpen = false
 }
 
 func (a *App) connectSavedProfile(p store.Profile) {
@@ -612,13 +692,6 @@ func (a *App) connectSavedProfile(p store.Profile) {
 		a.closeFind()
 	}
 
-	a.profileID = p.ID
-	a.profileName = p.Name
-	a.host = p.Host
-	a.port = strconv.Itoa(p.Port)
-	a.username = p.Username
-	a.password = ""
-	a.groupChoice = a.groupNameByID(p.GroupID)
 	// The profile already exists: connecting it again must not rewrite the
 	// database row or the saved password on every handshake.
 	a.saveProfile = false
@@ -632,16 +705,15 @@ func (a *App) connectSavedProfile(p store.Profile) {
 	a.filesOpen = false
 	a.monitorOpen = false
 	a.forwardOpen = false
-	a.directConnect = true
-	a.connectingProfileID = p.ID
+
+	// Open the session tab at once and dial behind it; the quick-connect page
+	// the click came from closes once the handshake succeeds.
+	origin := int64(0)
 	if tab := a.activeTabRef(); tab != nil && tab.kind == tabQuickConnect {
-		// The quick-connect page the user is looking at becomes the session
-		// tab once the handshake succeeds.
-		a.pendingQuickTab = tab.id
-	} else {
-		a.pendingQuickTab = 0
+		origin = tab.id
 	}
-	a.connect()
+	tab := a.connectingTab(p)
+	a.startConnectToTab(p, tab, origin)
 }
 
 func (a *App) saveProfileForm() {

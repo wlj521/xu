@@ -25,7 +25,6 @@ func (a *App) openConnectForm() {
 	a.formOpen = true
 	a.managerOpen = false
 	a.pickerOpen = false
-	a.directConnect = false
 	a.batchOpen = false
 	a.settingsOpen = false
 	a.connectErr = ""
@@ -54,6 +53,8 @@ func (a *App) shellMain(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Grow(1).FillHeight().Background(colPanelDeep).Children(func() {
 		a.tabStrip(c, t)
 		switch {
+		case a.connectingTabActive():
+			a.connectingTabView(c, t, a.activeTabRef())
 		case a.quickTabActive():
 			a.quickConnectView(c, t)
 		case a.editorOpen:
@@ -381,7 +382,6 @@ func (a *App) connectModal(c *ui.Context, t *ui.Theme) {
 					label = "连接中…"
 				}
 				if primaryAction(c, "connect-submit", label, iconLink).Disabled(a.connecting).Clicked() {
-					a.directConnect = false
 					a.connectingProfileID = 0
 					a.connect()
 				}

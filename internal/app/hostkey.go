@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -63,11 +64,12 @@ func (a *App) hostKeyFieldColor() ui.Color {
 // askHostKey asks the user whether to trust the server's host key. It runs on
 // the background dial goroutine: it opens the in-app modal through a.post,
 // waits up to two minutes for the answer, and returns false when the window is
-// gone, the app closes, or the user cancels.
+// gone, the app closes, the dial is cancelled (its tab was closed), or the
+// user cancels.
 //
 // The dialog itself runs on the main thread, so all host key state lives
 // there; the goroutine only waits on the ack channel it created.
-func (a *App) askHostKey(hk *sshx.HostKeyError) bool {
+func (a *App) askHostKey(ctx context.Context, hk *sshx.HostKeyError) bool {
 	if a.win == nil || hk == nil || a.ctx.Err() != nil {
 		return false
 	}
@@ -103,6 +105,8 @@ func (a *App) askHostKey(hk *sshx.HostKeyError) bool {
 	select {
 	case ok := <-ack:
 		return ok
+	case <-ctx.Done():
+		return false
 	case <-a.ctx.Done():
 		return false
 	case <-time.After(2 * time.Minute):

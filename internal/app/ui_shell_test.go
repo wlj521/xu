@@ -21,7 +21,7 @@ func quickTestProfile() store.Profile {
 	}
 }
 
-func TestQuickConnectCardConnectsInCurrentTab(t *testing.T) {
+func TestQuickConnectCardOpensNewConnectingTab(t *testing.T) {
 	a := New()
 	a.stop() // keep the test from dialing a real host
 	a.profiles = []store.Profile{quickTestProfile()}
@@ -46,8 +46,14 @@ func TestQuickConnectCardConnectsInCurrentTab(t *testing.T) {
 		t.Fatalf("status = %q", a.status)
 	}
 	tab := a.activeTabRef()
-	if a.pendingQuickTab == 0 || tab == nil || tab.kind != tabQuickConnect || tab.id != a.pendingQuickTab {
-		t.Fatalf("quick tab should host the session: pending=%d tab=%+v", a.pendingQuickTab, tab)
+	if tab == nil || tab.kind != tabConnecting || tab.conn == nil || tab.conn.profile.ID != 1 {
+		t.Fatalf("clicking the card must open a connecting tab: tab=%+v", tab)
+	}
+	if len(a.tabs) != 2 || a.tabs[0].kind != tabQuickConnect {
+		t.Fatalf("the quick-connect page must stay open: tabs=%+v", a.tabs)
+	}
+	if a.activeTab != 1 || a.pendingQuickTab != 0 {
+		t.Fatalf("activeTab = %d pendingQuickTab = %d, want the new tab in front", a.activeTab, a.pendingQuickTab)
 	}
 }
 
@@ -269,8 +275,8 @@ func TestConnectSavedProfileAlwaysOpensNewTab(t *testing.T) {
 	if a.saveProfile {
 		t.Fatal("connecting an existing profile must not rewrite it on every handshake")
 	}
-	if a.activeTab != 0 {
-		t.Fatalf("activeTab = %d, want the existing tab until the new one connects", a.activeTab)
+	if len(a.tabs) != 2 || a.activeTab != 1 || a.tabs[1].kind != tabConnecting {
+		t.Fatalf("activeTab = %d tabs = %+v, want a new connecting tab in front", a.activeTab, a.tabs)
 	}
 }
 
