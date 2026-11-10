@@ -321,6 +321,250 @@ func (a *App) closeTabIndex(i int) {
 	}
 }
 
+func (a *App) tabIndexByID(id int64) int {
+	for i, tab := range a.tabs {
+		if tab.id == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func (a *App) tabContextMenu(m *ui.Menu, tab *appTab) {
+	if tab == nil {
+		return
+	}
+	if m.Item("复制标签").Chosen() {
+		a.duplicateTab(tab)
+	}
+	m.Separator()
+	if m.Item("连接").Chosen() {
+		a.connectTab(tab)
+	}
+	if m.Item("连接全部").Chosen() {
+		a.connectAllTabs()
+	}
+	if m.Item("断开").Chosen() {
+		a.disconnectTab(tab)
+	}
+	m.Separator()
+	if m.Item("关闭").Chosen() {
+		a.closeTabByID(tab.id)
+	}
+	if m.Item("关闭其他").Chosen() {
+		a.closeOtherTabs(tab.id)
+	}
+	if m.Item("关闭全部").Chosen() {
+		a.closeAllTabs()
+	}
+}
+
+func (a *App) duplicateTab(tab *appTab) {
+	if tab == nil || a.tabIndexByID(tab.id) < 0 {
+		return
+	}
+	if tab.kind == tabQuickConnect {
+		a.openQuickTab()
+		a.status = "已复制快速连接标签"
+		return
+	}
+	ts := tab.term
+	if ts == nil {
+		return
+	}
+	if ts.local {
+		a.duplicateLocalTab()
+		return
+	}
+
+	p, profileID := ts.profile, ts.profileID
+	title := a.tabDisplayTitle(tab)
+	a.status = "正在复制标签 " + title + "…"
+	go func() {
+		client, err := a.dialWithPrompt(p)
+		if err != nil {
+			a.post(func() { a.status = "复制标签失败: " + err.Error() })
+			return
+		}
+		newTS, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay())
+		if err != nil {
+			client.Close()
+			a.post(func() { a.status = "复制标签失败: " + err.Error() })
+			return
+		}
+		newTS.profileID = profileID
+		a.post(func() {
+			if a.ctx.Err() != nil {
+				newTS.Close()
+				return
+			}
+			a.terms = append(a.terms, newTS)
+			a.openTermTab(newTS)
+			a.finding = false
+			a.resetFind()
+			a.filesOpen = false
+			a.monitorOpen = false
+			a.forwardOpen = false
+			a.batchOpen = false
+			a.settingsOpen = false
+			a.autoStartForwards(newTS)
+			a.startMonitorBackground(newTS)
+			a.status = "已复制标签 · " + title
+		})
+	}()
+}
+
+func (a *App) duplicateLocalTab() {
+	ts, err := newLocalTerminal(a.post, a.onTermSearch, a.termDisplay())
+	if err != nil {
+		a.status = "复制本地标签失败: " + err.Error()
+		return
+	}
+	a.terms = append(a.terms, ts)
+	a.openTermTab(ts)
+	a.status = "已复制本地标签"
+}
+
+func (a *App) connectTab(tab *appTab) {
+	if tab == nil {
+		return
+	}
+	if idx := a.tabIndexByID(tab.id); idx >= 0 {
+		a.activateTabIndex(idx)
+	}
+	if tab.kind != tabTerminal || tab.term == nil {
+		a.status = "快速连接页无需连接"
+		return
+	}
+	ts := tab.term
+	if ts.local {
+		if ts.exited {
+			a.status = "本地终端已退出，请新开标签"
+		} else {
+			a.status = "本地终端无需连接"
+		}
+		return
+	}
+	if ts.reconnecting {
+		a.status = "标签正在连接，请稍候"
+		return
+	}
+	if !ts.exited && ts.client != nil {
+		a.status = "标签已连接"
+		return
+	}
+	a.status = "正在连接 " + a.tabDisplayTitle(tab) + "…"
+	a.reconnect(ts)
+}
+
+func (a *App) connectAllTabs() {
+	count := 0
+	for _, tab := range a.tabs {
+		if tab.kind != tabTerminal || tab.term == nil {
+			continue
+		}
+		ts := tab.term
+		if ts.local || ts.reconnecting || (!ts.exited && ts.client != nil) {
+			continue
+		}
+		a.reconnect(ts)
+		count++
+	}
+	if count == 0 {
+		a.status = "没有需要连接的标签"
+		return
+	}
+	a.status = fmt.Sprintf("正在连接 %d 个标签…", count)
+}
+
+func (a *App) disconnectTab(tab *appTab) {
+	if tab == nil || tab.kind != tabTerminal || tab.term == nil {
+		a.status = "当前标签无法断开"
+		return
+	}
+	a.disconnectSession(tab.term)
+}
+
+func (a *App) disconnectSession(ts *termSession) {
+	if ts == nil {
+		return
+	}
+	if ts.reconnecting {
+		a.status = "标签正在连接，请稍候"
+		return
+	}
+	if ts.exited {
+		a.status = "标签已断开"
+		return
+	}
+	if a.editor != nil && a.editor.termID == ts.ID {
+		a.discardEditor()
+	}
+	a.stopMonitor(ts.ID)
+	a.stopForwards(ts.ID)
+	if b := a.browsers[ts.ID]; b != nil {
+		b.Close()
+		delete(a.browsers, ts.ID)
+	}
+	if ts == a.activeTerminal() {
+		a.filesOpen = false
+		a.monitorOpen = false
+		a.forwardOpen = false
+		a.finding = false
+		a.resetFind()
+	}
+
+	ts.exited = true
+	ts.reconnectErr = ""
+	if ts.local {
+		if ts.Term != nil {
+			ts.Term.Close()
+		}
+	} else {
+		if ts.conn != nil {
+			_ = ts.conn.Close()
+		}
+		if ts.client != nil {
+			_ = ts.client.Close()
+		}
+	}
+	a.status = "已断开 " + shortLabel(ts.Title, 28)
+}
+
+func (a *App) closeTabByID(id int64) {
+	if idx := a.tabIndexByID(id); idx >= 0 {
+		a.closeTabIndex(idx)
+	}
+}
+
+func (a *App) closeOtherTabs(keepID int64) {
+	if a.tabIndexByID(keepID) < 0 {
+		return
+	}
+	for len(a.tabs) > 1 {
+		idx := -1
+		for i, tab := range a.tabs {
+			if tab.id != keepID {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			break
+		}
+		a.closeTabIndex(idx)
+	}
+	if idx := a.tabIndexByID(keepID); idx >= 0 {
+		a.activateTabIndex(idx)
+	}
+}
+
+func (a *App) closeAllTabs() {
+	for len(a.tabs) > 0 {
+		a.closeTabIndex(len(a.tabs) - 1)
+	}
+}
+
 // tabWidth estimates one tab's width from its measured texts, so the tab
 // scroller can be sized to its content.
 func (a *App) tabWidth(c *ui.Context, i int, tab *appTab) float32 {
@@ -399,6 +643,9 @@ func (a *App) tabStrip(c *ui.Context, t *ui.Theme) {
 						Height(34).Padding(0, 9).Gap(6).Radius(0).AlignItems(ui.Center).
 						Label(fmt.Sprintf("标签页 %d：%s", i+1, title)).
 						Tooltip(fmt.Sprintf("标签页 %d · %s", i+1, title))
+					tabEl.ContextMenu(func(m *ui.Menu) {
+						a.tabContextMenu(m, tab)
+					})
 					if active {
 						tabEl.Background(colPanel)
 						tabEl.Border(1, colLine2)
@@ -452,18 +699,14 @@ func (a *App) tabStrip(c *ui.Context, t *ui.Theme) {
 
 		add := ui.ButtonBase(c.Key("tab-new")).Size(34, 34).Radius(4).Center().
 			Tooltip("新建标签页（快速连接）").Label("新建标签页")
-		add.Background(colPanel)
-		add.Border(1, colLine2)
-		if add.Hovered() {
-			add.Background(colPanel2)
-			add.BorderColor(colAccentLine)
-		}
-		addColor := colMuted
+		add.Background(ui.Transparent)
+		add.Border(0, ui.Transparent)
+		addColor := colText2
 		if add.Hovered() {
 			addColor = colCyan
 		}
 		add.Children(func() {
-			iconEl(c, iconPlus, 15, addColor)
+			iconEl(c, iconPlus, 16, addColor)
 		})
 		if add.Clicked() {
 			a.openQuickTab()

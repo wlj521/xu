@@ -63,12 +63,15 @@ func (a *App) dockHead(c *ui.Context, t *ui.Theme) {
 			item := item
 			active := dockTab(a.bottomFileTab) == item.tab
 			b := ui.ButtonBase(c.Key(fmt.Sprintf("dock-tab-%d", item.tab))).
-				Height(24).Padding(0, 8).Radius(5).Gap(5).AlignItems(ui.Center)
+				Height(32).Padding(0, 10).Radius(0).Gap(6).AlignItems(ui.Center)
 			if active {
-				b.Background(colPanel2)
+				b.Background(colPanel)
 				b.Border(1, colLine2)
+				b.DrawOver(func(p *ui.Painter, r ui.Rect) {
+					p.Fill(ui.Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: 2.5}, colCyan, 0)
+				})
 			} else if b.Hovered() {
-				b.Background(colPanel2)
+				b.Background(colPanel2.Alpha(0.7))
 			}
 			b.Children(func() {
 				iconEl(c, item.icon, 13, condColor(active, colCyan, colMuted))
