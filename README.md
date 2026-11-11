@@ -176,6 +176,8 @@ git push origin v0.1.1
 
 > 自动更新从 v0.1.1 起生效；v0.1.0 用户需要先手动安装一次 v0.1.1。
 
+> 更新签名私钥只保存在开发机与 GitHub Secret，不随应用或更新包发布。本机副本位于 `%USERPROFILE%\.xu\update-keys\mygo-update.key`，请自行安全备份。
+
 ## 测试
 
 ```powershell

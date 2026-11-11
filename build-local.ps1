@@ -12,9 +12,14 @@ $env:GOTMPDIR = Join-Path $PSScriptRoot ".gotmp"
 New-Item -ItemType Directory -Force $env:GOTMPDIR | Out-Null
 
 # Sign the update manifest and archive with the local key when the
-# environment does not provide one (CI passes it as a secret).
+# environment does not provide one (CI passes it as a secret). The visible
+# copy lives in the user profile; the AppData path is a fallback for older
+# builds, where a packaged environment may redirect it.
 if (-not $env:MYGO_UPDATER_PRIVATE_KEY) {
-    $updateKey = Join-Path $env:APPDATA "mygo\xu-update-keys\mygo-update.key"
+    $updateKey = Join-Path $env:USERPROFILE ".xu\update-keys\mygo-update.key"
+    if (-not (Test-Path $updateKey)) {
+        $updateKey = Join-Path $env:APPDATA "mygo\xu-update-keys\mygo-update.key"
+    }
     if (Test-Path $updateKey) {
         $env:MYGO_UPDATER_PRIVATE_KEY = (Get-Content $updateKey -Raw).Trim()
     }
