@@ -464,6 +464,9 @@ func (a *App) managerToolbar(c *ui.Context, t *ui.Theme) {
 	ui.Row(c).Height(54).Shrink(0).Padding(0, 16).Gap(8).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
 		qcSearchField(c, "mgr-search", &a.managerFilter, "搜索名称、主机、用户名或分组").Grow(1)
+		if ghostAction(c, t, "mgr-import", "导入", iconDownload).Clicked() {
+			a.importFinalShell()
+		}
 		if ghostAction(c, t, "mgr-new-group", "新建分组", iconNewFolder).Clicked() {
 			a.openGroupForm(0, "")
 		}
@@ -726,6 +729,10 @@ func (a *App) managerFooter(c *ui.Context, t *ui.Theme) {
 			statusDot(c, colRed, 6)
 			ui.Text(c, shortLabel(a.managerErr, 72)).FontSize(9.4).
 				TextColor(colRed).NoWrap()
+		} else if a.managerNotice != "" {
+			statusDot(c, colCyan, 6)
+			ui.Text(c, shortLabel(a.managerNotice, 84)).FontSize(9.4).
+				TextColor(colCyan).NoWrap()
 		} else {
 			dot := colMuted2
 			if online > 0 {
@@ -747,6 +754,7 @@ func (a *App) managerFooter(c *ui.Context, t *ui.Theme) {
 // but never saved.
 func (a *App) closeManager() {
 	a.managerOpen = false
+	a.managerNotice = ""
 	if a.groupFormOpen {
 		a.cancelGroupForm()
 	}

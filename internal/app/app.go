@@ -84,6 +84,7 @@ type App struct {
 	managerFilter string
 	managerSel    int64
 	managerErr    string
+	managerNotice string
 
 	// Quick-connect page filter.
 	quickFilter string

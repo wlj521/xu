@@ -44,6 +44,7 @@ func (a *App) openConnectionManager() {
 	a.searchOpen = false
 	a.managerOpen = true
 	a.managerErr = ""
+	a.managerNotice = ""
 	if a.managerSel == 0 && len(a.profiles) > 0 {
 		a.managerSel = a.profiles[0].ID
 	}
