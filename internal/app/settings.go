@@ -64,13 +64,15 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 		{"外观", iconSun},
 		{"终端", iconTerm},
 		{"连接", iconLink},
+		{"快捷键", iconCommand},
 		{"关于", iconHelp},
 	}
-	titles := []string{"外观", "终端", "连接", "关于"}
+	titles := []string{"外观", "终端", "连接", "快捷键", "关于"}
 	subtitles := []string{
 		"深色与浅色拥有独立的表面层级与终端配色，切换会立即生效。",
 		"字号与字体立即作用于已打开的终端，回滚缓冲对新会话生效。",
 		"同一主机的终端、SFTP 与监控共用一个 SSH 连接。",
+		"常用操作的键盘快捷键。",
 		"Xu 是一个不依赖 WebView 的原生 SSH 工作台。",
 	}
 	section := a.settingsSection
@@ -124,7 +126,7 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 						ui.Image(c, titleIcon).Size(24, 24).Fit(ui.Contain).Shrink(0)
 						ui.Column(c).Grow(1).Gap(1).Children(func() {
-							ui.Text(c, "Xu 0.1.0").FontSize(9.2).Font("Cascadia Code").
+							ui.Text(c, "Xu 0.1.1").FontSize(9.2).Font("Cascadia Code").
 								TextColor(colText2)
 							ui.Text(c, "修改即时生效").FontSize(8.2).TextColor(colMuted2)
 						})
@@ -149,7 +151,7 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 						}
 					})
 
-					ui.Scroll(c).Grow(1).Children(func() {
+					ui.Scroll(c).Grow(1).Scrollbars(false).Children(func() {
 						ui.Column(c).FillWidth().Gap(6).Children(func() {
 							ui.Column(c).FillWidth().Children(func() {
 								switch section {
@@ -158,6 +160,8 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 								case 2:
 									a.settingsConnection(c, t)
 								case 3:
+									a.settingsShortcuts(c, t)
+								case 4:
 									a.settingsAbout(c, t)
 								default:
 									a.settingsAppearance(c, t)
@@ -176,7 +180,8 @@ func (a *App) settingsView(c *ui.Context, t *ui.Theme) {
 		"主题与面板布局",
 		"字体、字号与回滚缓冲",
 		"连接保活、认证和主机密钥",
-		"版本、数据目录与快捷键",
+		"常用操作的键盘快捷键",
+		"版本、数据目录与项目信息",
 	}
 	sub := "外观、终端与连接行为"
 	if a.settingsSection >= 0 && a.settingsSection < len(subtitles) {
@@ -198,6 +203,8 @@ func (a *App) settingsView(c *ui.Context, t *ui.Theme) {
 				case 2:
 					a.settingsConnection(c, t)
 				case 3:
+					a.settingsShortcuts(c, t)
+				case 4:
 					a.settingsAbout(c, t)
 				default:
 					a.settingsAppearance(c, t)
@@ -372,7 +379,7 @@ func (a *App) settingsAbout(c *ui.Context, t *ui.Theme) {
 		Background(colPanel2).Border(1, colLine).AlignItems(ui.Center).Children(func() {
 		ui.Image(c, titleIcon).Size(38, 38).Fit(ui.Contain).Shrink(0)
 		ui.Column(c).Grow(1).Gap(2).Children(func() {
-			ui.Text(c, "Xu 0.1.0").FontSize(14.5).FontWeight(650).TextColor(colText)
+			ui.Text(c, "Xu 0.1.1").FontSize(14.5).FontWeight(650).TextColor(colText)
 			ui.Text(c, "SSH Workspace · mygo + Ghostty VT").FontSize(10.5).
 				Font("Cascadia Code").TextColor(colMuted)
 		})
@@ -396,34 +403,47 @@ func (a *App) settingsAbout(c *ui.Context, t *ui.Theme) {
 		})
 	})
 
-	settingsGroup(c, "快捷键", false, func() {
-		pairs := [][2]string{
-			{"新建连接", "Ctrl N"},
-			{"本地终端", "Ctrl T"},
-			{"新建标签页", "Ctrl Alt T"},
-			{"连接管理器", "Ctrl Alt C"},
-			{"终端查找", "Ctrl Shift F"},
-			{"服务器监控", "Ctrl B"},
-			{"底部面板", "Ctrl J"},
-			{"全局搜索", "Ctrl K"},
-		}
-		for i := 0; i < len(pairs); i += 2 {
-			i := i
-			ui.Row(c).FillWidth().Gap(24).Children(func() {
-				for j := 0; j < 2 && i+j < len(pairs); j++ {
-					pair := pairs[i+j]
-					ui.Row(c).Grow(1).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, pair[0]).FontSize(10.8).TextColor(colText2)
-						ui.Text(c, "").Grow(1)
-						ui.Box(c).Height(18).Padding(0, 6).Radius(4).Background(colPanel2).
-							Border(1, colLine).Center().Children(func() {
-							ui.Text(c, pair[1]).FontSize(9.2).Font("Cascadia Code").TextColor(colMuted2)
-						})
-					})
-				}
-			})
-		}
+	settingsGroup(c, "更新", false, func() {
+		settingsRow(c, "检查更新", "启动后每天自动检查一次；有新版本时会提示下载、安装并重启。", func() {
+			if ghostAction(c, t, "settings-check-updates", "检查更新", iconRefresh).Clicked() {
+				a.checkUpdates(true)
+			}
+		})
 	})
+
+}
+
+// settingsShortcuts is the keyboard shortcut reference, kept out of the
+// About page so neither section outgrows the dialog.
+func (a *App) settingsShortcuts(c *ui.Context, t *ui.Theme) {
+	pairs := [][2]string{
+		{"新建连接", "Ctrl N"},
+		{"本地终端", "Ctrl T"},
+		{"新建标签页", "Ctrl Alt T"},
+		{"连接管理器", "Ctrl Alt C"},
+		{"终端查找", "Ctrl Shift F"},
+		{"服务器监控", "Ctrl B"},
+		{"底部面板", "Ctrl J"},
+		{"全局搜索", "Ctrl K"},
+		{"保存远程编辑", "Ctrl S"},
+		{"设置", "Ctrl Alt S"},
+	}
+	for i := 0; i < len(pairs); i += 2 {
+		i := i
+		ui.Row(c).FillWidth().Gap(24).Children(func() {
+			for j := 0; j < 2 && i+j < len(pairs); j++ {
+				pair := pairs[i+j]
+				ui.Row(c).Grow(1).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, pair[0]).FontSize(10.8).TextColor(colText2)
+					ui.Text(c, "").Grow(1)
+					ui.Box(c).Height(18).Padding(0, 6).Radius(4).Background(colPanel2).
+						Border(1, colLine).Center().Children(func() {
+						ui.Text(c, pair[1]).FontSize(9.2).Font("Cascadia Code").TextColor(colMuted2)
+					})
+				})
+			}
+		})
+	}
 }
 
 func settingsGroup(c *ui.Context, label string, first bool, build func()) {

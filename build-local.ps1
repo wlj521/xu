@@ -11,6 +11,15 @@ Set-Location $PSScriptRoot
 $env:GOTMPDIR = Join-Path $PSScriptRoot ".gotmp"
 New-Item -ItemType Directory -Force $env:GOTMPDIR | Out-Null
 
+# Sign the update manifest and archive with the local key when the
+# environment does not provide one (CI passes it as a secret).
+if (-not $env:MYGO_UPDATER_PRIVATE_KEY) {
+    $updateKey = Join-Path $env:APPDATA "mygo\xu-update-keys\mygo-update.key"
+    if (Test-Path $updateKey) {
+        $env:MYGO_UPDATER_PRIVATE_KEY = (Get-Content $updateKey -Raw).Trim()
+    }
+}
+
 Get-Process Xu -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 300
 
@@ -50,11 +59,14 @@ if (-not $installer) {
     throw "NSIS installer was not created in build\windows-amd64"
 }
 
-# Checksums for the two published files, in sha256sum's format.
+# Checksums for the published files, in sha256sum's format.
+$sumDir = Join-Path $PSScriptRoot "build\windows-amd64"
 $releaseFiles = @(
     (Join-Path $PSScriptRoot "build\windows-amd64\Xu.exe"),
     $installer.FullName
 )
+$updateFiles = Get-ChildItem "$sumDir/update-windows-amd64.json", "$sumDir/xu-*-windows-amd64.tar.gz", "$sumDir/install.ps1" -ErrorAction SilentlyContinue
+$releaseFiles += @($updateFiles | ForEach-Object { $_.FullName })
 $shaLines = foreach ($f in $releaseFiles) {
     $h = (Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash.ToLower()
     "$h  $(Split-Path $f -Leaf)"
@@ -63,7 +75,6 @@ $md5Lines = foreach ($f in $releaseFiles) {
     $h = (Get-FileHash -Algorithm MD5 -LiteralPath $f).Hash.ToLower()
     "$h  $(Split-Path $f -Leaf)"
 }
-$sumDir = Join-Path $PSScriptRoot "build\windows-amd64"
 $shaLines | Set-Content (Join-Path $sumDir "SHA256SUMS") -Encoding ascii
 $md5Lines | Set-Content (Join-Path $sumDir "MD5SUMS") -Encoding ascii
 
@@ -72,3 +83,12 @@ Write-Host "  $PSScriptRoot\build\windows-amd64\Xu.exe (portable)"
 Write-Host "  $($installer.FullName) (installer)"
 Write-Host "  $sumDir\SHA256SUMS"
 Write-Host "  $sumDir\MD5SUMS"
+if (Test-Path (Join-Path $sumDir "update-windows-amd64.json")) {
+    Write-Host "  $sumDir\update-windows-amd64.json (update manifest)"
+}
+Get-ChildItem (Join-Path $sumDir "xu-*-windows-amd64.tar.gz") -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Host "  $($_.FullName) (update archive)"
+}
+if (Test-Path (Join-Path $sumDir "install.ps1")) {
+    Write-Host "  $sumDir\install.ps1 (update install script)"
+}

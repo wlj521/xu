@@ -45,6 +45,7 @@ func main() {
 			a.SetStatus("会话库初始化失败: " + err.Error())
 		} else {
 			a.SetStore(st)
+			go a.AutoCheckUpdates()
 		}
 
 		win := mygo.NewWindow(mygo.WindowOptions{

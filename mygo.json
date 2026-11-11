@@ -1,8 +1,16 @@
 {
   "name": "Xu",
   "identifier": "dev.example.xu",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "icon": "resources/icon.png",
   "out": "build",
-  "linux": { "webview": false }
+  "linux": {
+    "webview": false
+  },
+  "updates": {
+    "publicKey": "XRG9WpD5mHUFNSDvmRDpvCQa5Hw0vzbLSRsbUM6D/e0=",
+    "github": "wlj521/xu",
+    "tagPrefix": "v",
+    "deltas": 0
+  }
 }

@@ -86,6 +86,16 @@ type App struct {
 	managerErr    string
 	managerNotice string
 
+	// Update dialog and its background check.
+	updateOpen       bool
+	updateChecking   bool
+	updateErr        string
+	updateDetail     string
+	updateStatus     string
+	updateAvailable  *mygo.Update
+	updateProgress   float64
+	updateInstalling bool
+
 	// Quick-connect page filter.
 	quickFilter string
 
@@ -316,6 +326,9 @@ func (a *App) View(c *ui.Context) {
 		}
 		if a.settingsOpen {
 			a.settingsModal(c, t)
+		}
+		if a.updateOpen {
+			a.updateModal(c, t)
 		}
 		if a.searchOpen {
 			a.searchModal(c, t)

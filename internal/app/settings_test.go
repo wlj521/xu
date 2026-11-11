@@ -89,3 +89,20 @@ func TestSettingsShowsAllAccentLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestSettingsShortcutsSection(t *testing.T) {
+	a := New()
+	a.openSettings()
+	a.settingsSection = 3
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	for _, want := range []string{"快捷键", "Ctrl Alt C", "Ctrl Shift F", "保存远程编辑"} {
+		if !tt.HasText(want) {
+			t.Fatalf("shortcuts section is missing %q; texts = %q", want, tt.Texts())
+		}
+	}
+	if tt.HasText("GitHub") {
+		t.Fatal("the shortcuts section must not carry the About content")
+	}
+}

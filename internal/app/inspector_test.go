@@ -111,11 +111,11 @@ func TestLocalInspectorOffersConnectionManager(t *testing.T) {
 func TestSettingsAboutShowsGitHub(t *testing.T) {
 	a := New()
 	a.openSettings()
-	a.settingsSection = 3
+	a.settingsSection = 4
 
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
-	for _, want := range []string{"GitHub", "在浏览器打开 GitHub"} {
+	for _, want := range []string{"GitHub", "在浏览器打开 GitHub", "检查更新"} {
 		if !tt.HasText(want) {
 			t.Fatalf("about section is missing %q; texts = %q", want, tt.Texts())
 		}

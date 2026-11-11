@@ -19,3 +19,6 @@ mygo_windows_*.syso
 /.agents/
 /.claude/
 /.vscode/
+
+# Update signing key (never commit the private key)
+/mygo/update-keys/

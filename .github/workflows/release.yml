@@ -32,6 +32,8 @@ jobs:
 
       - name: Build portable exe
         shell: pwsh
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: ./build-local.ps1
 
       - name: Create GitHub Release
@@ -43,5 +45,8 @@ jobs:
             build/windows-amd64/*-setup-*-amd64.exe
             build/windows-amd64/SHA256SUMS
             build/windows-amd64/MD5SUMS
+            build/windows-amd64/update-windows-amd64.json
+            build/windows-amd64/xu-*-windows-amd64.tar.gz
+            build/windows-amd64/install.ps1
           fail_on_unmatched_files: true
           generate_release_notes: true

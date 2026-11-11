@@ -2,7 +2,7 @@
 
 > 一个原生 Windows SSH 工作台：多标签终端、SFTP 文件管理、实时服务器监控、端口转发与批量命令，不使用 WebView。
 
-- 版本：`0.1.0`
+- 版本：`0.1.1`
 - 技术栈：Go `1.27.3` + [mygo](https://github.com/egoist/mygo) `0.8.3` 原生 UI + Ghostty VT
 - 平台：Windows 10 1809+ / Windows 11（x64）
 
@@ -24,6 +24,7 @@
 - **批量命令**：在多台已保存主机上执行同一条命令。
 - **界面**：深浅色主题、八种强调色（默认薄荷绿）、顶部多标签会话、可收起左侧监控栏/底部面板；主机密钥确认使用应用内弹窗。
 - **设置**：主题、强调色、终端字号/字体/回滚缓冲、复制与查找行为；关闭设置时自动保存。
+- **更新**：从 v0.1.1 起支持自动更新——启动后每天检查一次，也可在「设置 → 关于」手动检查；更新包使用 Ed25519 签名校验，下载后提示安装并重启。
 
 界面布局：
 
@@ -86,9 +87,9 @@ build\windows-amd64\MD5SUMS
 `SHA256SUMS` / `MD5SUMS` 是便携版和安装包的校验值（`sha256sum` / `md5sum` 格式）。建议使用 SHA-256 校验完整性；MD5 仅为兼容旧工具保留，不建议作为安全校验。Windows 上可这样对照：
 
 ```powershell
-Get-FileHash .\xu-setup-0.1.0-amd64.exe -Algorithm SHA256
+Get-FileHash .\xu-setup-0.1.1-amd64.exe -Algorithm SHA256
 # 或者
-certutil -hashfile .\xu-setup-0.1.0-amd64.exe SHA256
+certutil -hashfile .\xu-setup-0.1.1-amd64.exe SHA256
 ```
 
 便携版 `Xu.exe` 已经包含：
@@ -167,11 +168,13 @@ powershell -ExecutionPolicy Bypass -File .\build-local.ps1
 推送 `v*` 标签后，GitHub Actions 会在 `windows-latest` 上自动运行 `build-local.ps1`，把便携版 `Xu.exe`、NSIS 安装包和 `SHA256SUMS` / `MD5SUMS` 作为附件创建 GitHub Release：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
-工作流会核对标签与 `mygo.json` 的 `version`，发版前先更新版本号。
+工作流会核对标签与 `mygo.json` 的 `version`，发版前先更新版本号。Release 同时上传自动更新所需的 `update-windows-amd64.json`、签名归档和 `install.ps1`。
+
+> 自动更新从 v0.1.1 起生效；v0.1.0 用户需要先手动安装一次 v0.1.1。
 
 ## 测试
 
