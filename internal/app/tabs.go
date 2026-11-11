@@ -422,7 +422,7 @@ func (a *App) duplicateTab(tab *appTab) {
 			a.post(func() { a.status = "复制标签失败: " + err.Error() })
 			return
 		}
-		newTS, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay())
+		newTS, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay(), a.logHL)
 		if err != nil {
 			client.Close()
 			a.post(func() { a.status = "复制标签失败: " + err.Error() })

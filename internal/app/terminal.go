@@ -75,7 +75,7 @@ type termSession struct {
 	ID           int64
 	Title        string
 	Term         *terminal.Terminal
-	conn         *sshTermConn
+	conn         *highlightConn
 	sess         *ssh.Session
 	client       *ssh.Client
 	profile      sshx.Profile
@@ -95,23 +95,24 @@ type termDisplay struct {
 	Dark         *terminal.Theme
 }
 
-func newTermSession(client *ssh.Client, p sshx.Profile, cols, rows int, post func(func()), onSearch func(int64, terminal.SearchStatus), display termDisplay) (*termSession, error) {
+func newTermSession(client *ssh.Client, p sshx.Profile, cols, rows int, post func(func()), onSearch func(int64, terminal.SearchStatus), display termDisplay, hl *logHighlighter) (*termSession, error) {
 	conn, err := newSSHTermConn(client, cols, rows)
 	if err != nil {
 		return nil, err
 	}
+	highlighted := newHighlightConn(conn, hl)
 
 	ts := &termSession{
 		ID:      time.Now().UnixNano(),
 		Title:   p.Username + "@" + p.Host,
-		conn:    conn,
+		conn:    highlighted,
 		sess:    conn.sess,
 		client:  client,
 		profile: p,
 	}
 
 	term, err := terminal.New(terminal.Options{
-		Conn:         conn,
+		Conn:         highlighted,
 		Scrollback:   display.Scrollback,
 		Font:         display.Font,
 		CopyOnSelect: copyOnSelect(display),
@@ -134,7 +135,7 @@ func newTermSession(client *ssh.Client, p sshx.Profile, cols, rows int, post fun
 		},
 	})
 	if err != nil {
-		conn.Close()
+		highlighted.Close()
 		client.Close()
 		return nil, err
 	}

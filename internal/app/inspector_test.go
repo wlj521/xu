@@ -111,7 +111,7 @@ func TestLocalInspectorOffersConnectionManager(t *testing.T) {
 func TestSettingsAboutShowsGitHub(t *testing.T) {
 	a := New()
 	a.openSettings()
-	a.settingsSection = 4
+	a.settingsSection = 5
 
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()

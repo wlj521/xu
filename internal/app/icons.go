@@ -15,6 +15,7 @@ var (
 
 	iconServer       = svgIcon(`<rect x="3.5" y="4" width="17" height="6" rx="1.6"/><rect x="3.5" y="14" width="17" height="6" rx="1.6"/><path d="M7 7h.01M7 17h.01M11 7h5M11 17h5"/>`)
 	iconTerm         = svgIcon(`<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="m7 9 3 3-3 3M12.5 15H17"/>`)
+	iconPalette      = svgIcon(`<path d="M12 3a9 9 0 1 0 0 18h1.2a1.8 1.8 0 0 0 1.4-3l-.5-.6a1.8 1.8 0 0 1 1.4-3h1.8A3.7 3.7 0 0 0 21 10.7 7.3 7.3 0 0 0 12 3Z"/><circle cx="7.5" cy="11" r=".9"/><circle cx="10" cy="7.6" r=".9"/><circle cx="14.5" cy="7.2" r=".9"/><circle cx="17.3" cy="10" r=".9"/>`)
 	iconFolder       = svgIcon(`<path d="M3.1 8h5.8l2 2h9.9l-1.3 7.8a2 2 0 0 1-2 1.7H5.2a2 2 0 0 1-2-1.8L2.4 9.2A1.4 1.4 0 0 1 3.1 8Z"/><path d="M3.1 8V6.2a1.7 1.7 0 0 1 1.7-1.7h4.4l2 2h6.9a1.7 1.7 0 0 1 1.7 1.7V8"/>`)
 	iconFile         = fileDocIcon("")
 	iconFileText     = fileDocIcon(`<path d="M8.3 12.4h7.2M8.3 15.1h7.2M8.3 17.8h4.7"/>`)

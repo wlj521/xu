@@ -50,7 +50,7 @@ func (a *App) reconnect(ts *termSession) {
 			return
 		}
 
-		newTS, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay())
+		newTS, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay(), a.logHL)
 		if err != nil {
 			client.Close()
 			a.post(func() {

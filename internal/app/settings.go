@@ -2,6 +2,10 @@ package app
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -13,21 +17,70 @@ import (
 const githubURL = "https://github.com/wlj521/xu"
 
 type appSettings struct {
-	FontFamily    string
-	FontSize      int
-	ScrollbackMB  int
-	Theme         int  // 0 follows the system, 1 dark, 2 light
-	Accent        int  // 0 blue, 1 mint, 2 violet, 3 orange, 4 rose, 5 emerald, 6 gold, 7 indigo
-	CopyOnSelect  bool // selection copies to the clipboard
-	FindHighlight bool // terminal search highlights matches
-	AutoReconnect bool // reconnects dropped sessions
+	FontFamily     string
+	FontSize       int
+	ScrollbackMB   int
+	Theme          int         // 0 follows the system, 1 dark, 2 light
+	Accent         int         // 0 blue, 1 mint, 2 violet, 3 orange, 4 rose, 5 emerald, 6 gold, 7 indigo
+	TerminalScheme string      // Ghostty scheme name; empty follows the app theme
+	CopyOnSelect   bool        // selection copies to the clipboard
+	FindHighlight  bool        // terminal search highlights matches
+	AutoReconnect  bool        // reconnects dropped sessions
+	LogHighlight   bool        // colorize log lines in SSH terminals
+	LogAnchorOnly  bool        // only colorize lines that look like logs
+	LogRules       []logRule   // log highlighting rules, in priority order
+	LogFormats     []logFormat // user-defined ways to recognize a log line
 }
 
 func defaultSettings() appSettings {
 	return appSettings{
 		FontSize: 13, ScrollbackMB: 10, Theme: 1,
 		Accent: defaultAccent, CopyOnSelect: true, FindHighlight: true, AutoReconnect: true,
+		LogHighlight: true, LogAnchorOnly: true, LogRules: defaultLogRules(),
 	}
+}
+
+// schemePickerState is the terminal color scheme picker: the names Ghostty
+// offers, the themes loaded so far, and the list's filter and place.
+type schemePickerState struct {
+	names []string
+	cache map[string]*terminal.Theme
+	query string
+	sel   int
+	list  ui.ListState
+}
+
+func (a *App) ensureSchemes() *schemePickerState {
+	if a.schemes == nil {
+		a.schemes = &schemePickerState{cache: map[string]*terminal.Theme{}}
+	}
+	if a.schemes.cache == nil {
+		a.schemes.cache = map[string]*terminal.Theme{}
+	}
+	return a.schemes
+}
+
+// reloadSchemes rescans the built-in list and the user's theme directory.
+func (a *App) reloadSchemes() {
+	s := a.ensureSchemes()
+	s.names = terminal.GhosttyThemes()
+	s.cache = map[string]*terminal.Theme{}
+}
+
+func (a *App) schemeTheme(name string) (*terminal.Theme, bool) {
+	if name == "" {
+		return nil, false
+	}
+	s := a.ensureSchemes()
+	if th, ok := s.cache[name]; ok {
+		return th, true
+	}
+	th, err := terminal.GhosttyTheme(name)
+	if err != nil {
+		return nil, false
+	}
+	s.cache[name] = th
+	return th, true
 }
 
 func (a *App) openSettings() {
@@ -46,10 +99,22 @@ func (a *App) openSettings() {
 	a.settingsFontPick = fontChoiceForFamily(a.settings.FontFamily)
 	a.settingsFontSizeF = float64(a.settings.FontSize)
 	a.settingsScrollPick = fmt.Sprintf("%d MB", a.settings.ScrollbackMB)
+	a.reloadSchemes()
+	a.schemes.query = ""
+	a.schemes.list.ScrollTo(0, ui.Start)
+	if name := a.settings.TerminalScheme; name != "" {
+		for i, candidate := range a.schemes.names {
+			if candidate == name {
+				a.schemes.list.ScrollTo(i+1, ui.Center)
+				break
+			}
+		}
+	}
 }
 
 func (a *App) closeSettings() {
 	a.settingsOpen = false
+	a.logRulesOpen = false
 }
 
 func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
@@ -63,14 +128,16 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 	}{
 		{"外观", iconSun},
 		{"终端", iconTerm},
+		{"配色", iconPalette},
 		{"连接", iconLink},
 		{"快捷键", iconCommand},
 		{"关于", iconHelp},
 	}
-	titles := []string{"外观", "终端", "连接", "快捷键", "关于"}
+	titles := []string{"外观", "终端", "配色", "连接", "快捷键", "关于"}
 	subtitles := []string{
 		"深色与浅色拥有独立的表面层级与终端配色，切换会立即生效。",
 		"字号与字体立即作用于已打开的终端，回滚缓冲对新会话生效。",
+		"内置 Ghostty 配色，可搜索、预览并立即应用到已打开的终端。",
 		"同一主机的终端、SFTP 与监控共用一个 SSH 连接。",
 		"常用操作的键盘快捷键。",
 		"Xu 是一个不依赖 WebView 的原生 SSH 工作台。",
@@ -151,24 +218,28 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 						}
 					})
 
-					ui.Scroll(c).Grow(1).Scrollbars(false).Children(func() {
-						ui.Column(c).FillWidth().Gap(6).Children(func() {
-							ui.Column(c).FillWidth().Children(func() {
-								switch section {
-								case 1:
-									a.settingsTerminal(c, t)
-								case 2:
-									a.settingsConnection(c, t)
-								case 3:
-									a.settingsShortcuts(c, t)
-								case 4:
-									a.settingsAbout(c, t)
-								default:
-									a.settingsAppearance(c, t)
-								}
+					if section == 2 {
+						a.settingsScheme(c, t)
+					} else {
+						ui.Scroll(c).Grow(1).Scrollbars(false).Children(func() {
+							ui.Column(c).FillWidth().Gap(6).Children(func() {
+								ui.Column(c).FillWidth().Children(func() {
+									switch section {
+									case 1:
+										a.settingsTerminal(c, t)
+									case 3:
+										a.settingsConnection(c, t)
+									case 4:
+										a.settingsShortcuts(c, t)
+									case 5:
+										a.settingsAbout(c, t)
+									default:
+										a.settingsAppearance(c, t)
+									}
+								})
 							})
 						})
-					})
+					}
 				})
 			})
 		})
@@ -179,6 +250,7 @@ func (a *App) settingsView(c *ui.Context, t *ui.Theme) {
 	subtitles := []string{
 		"主题与面板布局",
 		"字体、字号与回滚缓冲",
+		"终端配色、预览与主题文件",
 		"连接保活、认证和主机密钥",
 		"常用操作的键盘快捷键",
 		"版本、数据目录与项目信息",
@@ -201,10 +273,12 @@ func (a *App) settingsView(c *ui.Context, t *ui.Theme) {
 				case 1:
 					a.settingsTerminal(c, t)
 				case 2:
-					a.settingsConnection(c, t)
+					ui.Column(c).Height(440).Children(func() { a.settingsScheme(c, t) })
 				case 3:
-					a.settingsShortcuts(c, t)
+					a.settingsConnection(c, t)
 				case 4:
+					a.settingsShortcuts(c, t)
+				case 5:
 					a.settingsAbout(c, t)
 				default:
 					a.settingsAppearance(c, t)
@@ -353,6 +427,278 @@ func (a *App) settingsTerminal(c *ui.Context, t *ui.Theme) {
 			}
 		})
 	})
+
+	a.settingsLogHighlight(c, t)
+}
+
+// settingsScheme is the terminal color scheme page: searchable built-in and
+// user themes on the left, a preview and the user theme folder on the right.
+func (a *App) settingsScheme(c *ui.Context, t *ui.Theme) {
+	s := a.ensureSchemes()
+	rows := a.schemeRows()
+	if len(rows) == 0 {
+		rows = []string{""}
+	}
+	sel := 0
+	if name := a.settings.TerminalScheme; name != "" {
+		for i, row := range rows {
+			if row == name {
+				sel = i
+				break
+			}
+		}
+	}
+	s.sel = sel
+	s.list.Selected = &s.sel
+	s.list.Label = func(i int) string {
+		if i < 0 || i >= len(rows) {
+			return ""
+		}
+		if rows[i] == "" {
+			return "Default"
+		}
+		return rows[i]
+	}
+
+	active := rows[sel]
+	th := a.schemePreviewTheme(active)
+
+	ui.Row(c).Grow(1).Gap(14).AlignItems(ui.Stretch).Children(func() {
+		ui.Column(c).Grow(1).Gap(8).Children(func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.TextInput(c, &s.query).Grow(1).Height(32).FontSize(10.5).
+					Placeholder("搜索配色名称")
+				ui.Text(c, fmt.Sprintf("%d 套", len(s.names))).FontSize(9.4).
+					Font("Cascadia Code").TextColor(colMuted2).Shrink(0)
+			})
+
+			ui.Column(c).Grow(1).Padding(4).Background(colPanel2).
+				Border(1, colLine).Radius(9).Children(func() {
+				list := ui.List(c.Key("scheme-list"), &s.list, len(rows)).Grow(1).
+					Rows(func(row ui.ListRow) {
+						a.schemeRow(row, rows[row.Index])
+					})
+				if list.Changed() && s.sel >= 0 && s.sel < len(rows) {
+					a.applyScheme(rows[s.sel])
+				}
+			})
+		})
+
+		ui.Column(c).Width(206).Gap(7).Children(func() {
+			ui.Text(c, "预览").FontSize(10.5).FontWeight(620).TextColor(colText2)
+			a.schemePreview(c, th)
+
+			title := "Default · 跟随外观"
+			if active != "" {
+				title = active
+			}
+			ui.Text(c, title).FontSize(10.8).FontWeight(600).TextColor(colText).NoWrap()
+			ui.Text(c, fmt.Sprintf("共 %d 套 · 内置 Ghostty 配色", len(s.names))).
+				FontSize(9.2).TextColor(colMuted2)
+			if active != "" && colorIsDark(th.Background) != a.uiDark() {
+				ui.Text(c, "该配色与界面明暗相反，仅作用于终端区域。").
+					FontSize(9).TextColor(colAmber).LineHeight(1.5)
+			}
+
+			ui.Text(c, "支持 Ghostty 主题文件，文件名即配色名。").
+				FontSize(8.6).TextColor(colMuted2).LineHeight(1.45)
+			ui.Text(c, "").Grow(1)
+			if ghostAction(c, t, "scheme-folder", "主题文件夹", iconFolder).Clicked() {
+				a.openThemeFolder()
+			}
+			if ghostAction(c, t, "scheme-reload", "重新加载", iconRefresh).Clicked() {
+				a.reloadSchemes()
+				a.applyTermSettings()
+				a.status = "配色列表已重新加载"
+			}
+		})
+	})
+}
+
+// schemeRows is the picker's rows: Default, then the active scheme when a
+// filter hides it, then the matching names.
+func (a *App) schemeRows() []string {
+	s := a.ensureSchemes()
+	q := strings.ToLower(strings.TrimSpace(s.query))
+	rows := make([]string, 0, len(s.names)+2)
+	rows = append(rows, "")
+	seen := map[string]bool{"": true}
+	if cur := a.settings.TerminalScheme; cur != "" {
+		present := false
+		for _, name := range s.names {
+			if name == cur {
+				present = true
+				break
+			}
+		}
+		if !present || (q != "" && !strings.Contains(strings.ToLower(cur), q)) {
+			// Keep the active scheme visible, and reachable, even when its
+			// file is gone or the filter hides its name.
+			rows = append(rows, cur)
+			seen[cur] = true
+		}
+	}
+	for _, name := range s.names {
+		if seen[name] {
+			continue
+		}
+		if q != "" && !strings.Contains(strings.ToLower(name), q) {
+			continue
+		}
+		rows = append(rows, name)
+		seen[name] = true
+	}
+	return rows
+}
+
+func (a *App) schemeRow(row ui.ListRow, name string) {
+	c := row.Context
+	selected := row.Selected()
+	el := ui.Row(c).FillWidth().Height(31).Padding(0, 8).Gap(8).
+		Radius(6).AlignItems(ui.Center)
+	// An opaque row hides the list's accent choice; the bar and check mark
+	// say which scheme is active without a full-width accent fill.
+	if selected {
+		el.Background(colPanelDeep).Border(1, colAccentLine)
+	} else if el.Hovered() {
+		el.Background(colCard)
+	}
+	th := a.schemePreviewTheme(name)
+	el.Children(func() {
+		bar := ui.Box(c).Width(2).Height(14).Radius(1).Shrink(0)
+		if selected {
+			bar.Background(colCyan)
+		}
+		ui.Box(c).Size(16, 16).Radius(4).Shrink(0).Background(th.Background).
+			Border(1, colLine2).Center().Children(func() {
+			ui.Text(c, "A").Font("Cascadia Code").FontSize(8).TextColor(th.Foreground)
+		})
+		label := name
+		if label == "" {
+			label = "Default"
+		}
+		ui.Text(c, label).FontSize(10.1).Grow(1).NoWrap().
+			TextColor(condColor(selected, colText, colText2))
+		for i := 1; i <= 6; i++ {
+			ui.Box(c).Size(5, 9).Radius(2).Shrink(0).Background(th.Palette[i])
+		}
+		if selected {
+			iconEl(c, iconCheck, 11, colCyan)
+		}
+	})
+}
+
+type schemePreviewPart struct {
+	text  string
+	color ui.Color
+	bold  bool
+}
+
+func (a *App) schemePreview(c *ui.Context, th *terminal.Theme) {
+	fg := th.Foreground
+	line := func(parts ...schemePreviewPart) {
+		ui.Row(c).Gap(0).AlignItems(ui.Center).Children(func() {
+			for _, part := range parts {
+				text := ui.Text(c, part.text).Font("Cascadia Code").FontSize(9).
+					TextColor(part.color).NoWrap()
+				if part.bold {
+					text.FontWeight(700)
+				}
+			}
+		})
+	}
+	ui.Column(c).FillWidth().Padding(10, 8).Gap(4).Background(th.Background).
+		Border(1, colLine2).Radius(8).Children(func() {
+		line(schemePreviewPart{"root@xu", th.Palette[2], false},
+			schemePreviewPart{":", fg, false},
+			schemePreviewPart{"~", th.Palette[4], false},
+			schemePreviewPart{"$ ls -la", fg, false})
+		line(schemePreviewPart{"drwxr-xr-x", th.Palette[6], false},
+			schemePreviewPart{"  2 xu xu 4.0K .config", fg, false})
+		line(schemePreviewPart{"13:21:05", th.Palette[8], false},
+			schemePreviewPart{" INFO ", th.Palette[2], false},
+			schemePreviewPart{"started in 812ms", fg, false})
+		line(schemePreviewPart{"13:21:06", th.Palette[8], false},
+			schemePreviewPart{" WARN ", th.Palette[3], false},
+			schemePreviewPart{"slow query 1.2s", fg, false})
+		line(schemePreviewPart{"13:21:07", th.Palette[8], false},
+			schemePreviewPart{" ERROR ", th.Palette[1], true},
+			schemePreviewPart{"connection reset", fg, false})
+		ui.Row(c).FillWidth().Gap(2).Padding(0, 1).Children(func() {
+			for i := 0; i < 16; i++ {
+				ui.Box(c).Size(9, 9).Radius(2).Background(th.Palette[i])
+			}
+		})
+	})
+}
+
+func (a *App) schemePreviewTheme(name string) *terminal.Theme {
+	if name != "" {
+		if th, ok := a.schemeTheme(name); ok {
+			return th
+		}
+	}
+	return a.defaultSchemeTheme()
+}
+
+func (a *App) defaultSchemeTheme() *terminal.Theme {
+	light, dark := a.defaultTermThemes()
+	if a.uiDark() {
+		return dark
+	}
+	return light
+}
+
+func (a *App) applyScheme(name string) {
+	if name != "" {
+		if _, ok := a.schemeTheme(name); !ok {
+			a.status = "无法读取配色 " + name
+			return
+		}
+	}
+	if a.settings.TerminalScheme == name {
+		return
+	}
+	a.settings.TerminalScheme = name
+	a.applyTermSettings()
+	if name == "" {
+		a.status = "已恢复默认配色"
+	} else {
+		a.status = "配色已切换为 " + name
+	}
+}
+
+func (a *App) openThemeFolder() {
+	dir := ghosttyThemeDir()
+	if dir == "" {
+		a.status = "无法定位用户主题文件夹"
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		a.status = "无法创建主题文件夹: " + err.Error()
+		return
+	}
+	if err := exec.Command("explorer.exe", dir).Start(); err != nil {
+		a.status = "无法打开主题文件夹: " + err.Error()
+	}
+}
+
+// ghosttyThemeDir is where mygo reads the user's Ghostty themes, as Ghostty
+// finds them too: XDG_CONFIG_HOME, else LOCALAPPDATA on Windows.
+func ghosttyThemeDir() string {
+	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+		return filepath.Join(dir, "ghostty", "themes")
+	}
+	if runtime.GOOS == "windows" {
+		if dir := os.Getenv("LOCALAPPDATA"); dir != "" {
+			return filepath.Join(dir, "ghostty", "themes")
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "ghostty", "themes")
 }
 
 func (a *App) settingsConnection(c *ui.Context, t *ui.Theme) {
@@ -562,6 +908,12 @@ func (a *App) loadSettings() {
 			a.settings.Theme = n
 		}
 	}
+	if v := values["terminal.scheme"]; v != "" {
+		a.settings.TerminalScheme = v
+	}
+	if v := values["terminal.log_highlight"]; v != "" {
+		a.loadLogHighlight(v)
+	}
 	if v := values["ui.accent"]; v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n < len(accentChoices) {
 			a.settings.Accent = n
@@ -606,6 +958,8 @@ func (a *App) saveSettings() {
 			"terminal.font.size":        strconv.Itoa(size),
 			"terminal.scrollback_mb":    strconv.Itoa(scroll),
 			"terminal.theme":            strconv.Itoa(a.settings.Theme),
+			"terminal.scheme":           a.settings.TerminalScheme,
+			"terminal.log_highlight":    a.logHighlightValue(),
 			"ui.accent":                 strconv.Itoa(a.settings.Accent),
 			"terminal.copy_on_select":   boolText(a.settings.CopyOnSelect),
 			"terminal.find_highlight":   boolText(a.settings.FindHighlight),
@@ -664,6 +1018,19 @@ func copyOnSelect(display termDisplay) terminal.CopyOnSelect {
 }
 
 func (a *App) termThemes() (*terminal.Theme, *terminal.Theme) {
+	if name := a.settings.TerminalScheme; name != "" {
+		if th, ok := a.schemeTheme(name); ok {
+			cp := *th
+			if !a.settings.FindHighlight {
+				cp.Search, cp.SearchSelected = cp.Background, cp.Background
+			}
+			return &cp, &cp
+		}
+	}
+	return a.defaultTermThemes()
+}
+
+func (a *App) defaultTermThemes() (*terminal.Theme, *terminal.Theme) {
 	light := terminal.LightTheme()
 	light.Background = colTermBg
 	light.Foreground = ui.Hex("#1E1F22")

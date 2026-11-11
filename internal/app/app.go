@@ -165,6 +165,14 @@ type App struct {
 	settingsScrollPick string
 	settingsErr        string
 	settingsStatus     string
+	schemes            *schemePickerState
+	logHL              *logHighlighter
+	logRulesOpen       bool
+	logRulesTab        int
+	logRuleErrs        map[int64]string
+	logFormatErrs      map[int64]string
+	logFormatTest      string
+	logPresetPick      string
 
 	inspectorTab  int
 	bottomFiles   bool
@@ -186,7 +194,7 @@ type App struct {
 
 func New() *App {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &App{
+	a := &App{
 		ctx:                ctx,
 		stop:               cancel,
 		formOpen:           false,
@@ -216,7 +224,10 @@ func New() *App {
 		splitPercent:       64,
 		groupChoice:        "未分组",
 		collapsedGroups:    make(map[int64]bool),
+		logPresetPick:      "通用日志",
 	}
+	a.applyLogHighlight()
+	return a
 }
 
 func (a *App) Attach(w *mygo.Window) { a.win = w }
@@ -229,6 +240,7 @@ func (a *App) SetStore(st *store.Store) {
 		return
 	}
 	a.loadSettings()
+	a.applyLogHighlight()
 	a.refreshGroups()
 	a.refreshProfiles()
 
@@ -326,6 +338,9 @@ func (a *App) View(c *ui.Context) {
 		}
 		if a.settingsOpen {
 			a.settingsModal(c, t)
+		}
+		if a.logRulesOpen {
+			a.logRulesModal(c, t)
 		}
 		if a.updateOpen {
 			a.updateModal(c, t)
@@ -511,7 +526,7 @@ func (a *App) doConnect(ctx context.Context, cancel context.CancelFunc, p sshx.P
 		return
 	}
 
-	ts, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay())
+	ts, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay(), a.logHL)
 	if err != nil {
 		client.Close()
 		fail("打开终端失败: " + err.Error())

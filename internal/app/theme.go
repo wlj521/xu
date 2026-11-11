@@ -121,6 +121,12 @@ func setPalette(dark bool) {
 	colScrollbar = ui.Hex("#C8CCD2")
 }
 
+// colorIsDark reports whether a color is dark, as the terminal's themes
+// reckon it: by the perceived brightness of its components.
+func colorIsDark(c ui.Color) bool {
+	return 299*int(c.R)+587*int(c.G)+114*int(c.B) < 128*1000
+}
+
 func (a *App) uiDark() bool {
 	switch a.settings.Theme {
 	case 1:
@@ -155,6 +161,21 @@ func (a *App) updatePalette(dark bool) {
 	setPalette(dark)
 	colCyan, colBlue, colAccentHover, colAccentPressed, colAccentSoft, colAccentLine =
 		accentPalette(dark, a.settings.Accent)
+	a.applySchemeBackground(dark)
+}
+
+// applySchemeBackground lets the monitor and file panels share the scheme's
+// surface when it agrees with the window's light or dark appearance; a
+// light scheme in a dark window stays out of the chrome, where its light
+// background would hurt the app's text colors.
+func (a *App) applySchemeBackground(dark bool) {
+	if a.settings.TerminalScheme == "" {
+		return
+	}
+	th, ok := a.schemeTheme(a.settings.TerminalScheme)
+	if ok && colorIsDark(th.Background) == dark {
+		colTermBg = th.Background
+	}
 }
 
 func (a *App) setAccent(index int) {
