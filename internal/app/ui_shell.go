@@ -203,7 +203,7 @@ func (a *App) shellStatusBar(c *ui.Context, t *ui.Theme) {
 		a.statusSep(c)
 		ui.Text(c, "UTF-8").FontSize(8.2).Font("Cascadia Code").TextColor(colMuted2)
 		a.statusSep(c)
-		ui.Text(c, "Xu 0.1.1").FontSize(8.2).Font("Cascadia Code").TextColor(colMuted2)
+		ui.Text(c, "Xu 0.2.0").FontSize(8.2).Font("Cascadia Code").TextColor(colMuted2)
 	})
 }
 
