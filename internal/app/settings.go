@@ -5,16 +5,19 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 )
+
+const githubURL = "https://github.com/wlj521/xu"
 
 type appSettings struct {
 	FontFamily    string
 	FontSize      int
 	ScrollbackMB  int
 	Theme         int  // 0 follows the system, 1 dark, 2 light
-	Accent        int  // 0 blue, 1 teal, 2 violet, 3 orange
+	Accent        int  // 0 blue, 1 mint, 2 violet, 3 orange, 4 rose, 5 emerald, 6 gold, 7 indigo
 	CopyOnSelect  bool // selection copies to the clipboard
 	FindHighlight bool // terminal search highlights matches
 	AutoReconnect bool // reconnects dropped sessions
@@ -23,7 +26,7 @@ type appSettings struct {
 func defaultSettings() appSettings {
 	return appSettings{
 		FontSize: 13, ScrollbackMB: 10, Theme: 1,
-		Accent: 0, CopyOnSelect: true, FindHighlight: true, AutoReconnect: true,
+		Accent: defaultAccent, CopyOnSelect: true, FindHighlight: true, AutoReconnect: true,
 	}
 }
 
@@ -216,8 +219,8 @@ func (a *App) settingsAppearance(c *ui.Context, t *ui.Theme) {
 	settingsGroup(c, "强调色", false, func() {
 		settingsRow(c, "界面强调色", "用于选中态、图表、终端光标与主按钮。", func() {
 			ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-				for i, label := range []string{"蓝色", "青色", "紫色", "橙色"} {
-					a.accentSwatch(c, i, label)
+				for _, choice := range accentChoices {
+					a.accentSwatch(c, choice.index, choice.label)
 				}
 			})
 		})
@@ -381,6 +384,18 @@ func (a *App) settingsAbout(c *ui.Context, t *ui.Theme) {
 		settingsKV(c, "终端引擎", "Ghostty VT")
 	})
 
+	settingsGroup(c, "项目", false, func() {
+		settingsRow(c, "GitHub", "", func() {
+			if iconButton(c, t, "settings-github", iconGitHub, "在浏览器打开 GitHub").Clicked() {
+				if err := mygo.Shell.OpenExternal(githubURL); err != nil {
+					a.settingsErr = "打开 GitHub 失败: " + err.Error()
+				} else {
+					a.settingsStatus = "已在浏览器打开 GitHub"
+				}
+			}
+		})
+	})
+
 	settingsGroup(c, "快捷键", false, func() {
 		pairs := [][2]string{
 			{"新建连接", "Ctrl N"},
@@ -528,7 +543,7 @@ func (a *App) loadSettings() {
 		}
 	}
 	if v := values["ui.accent"]; v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 3 {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n < len(accentChoices) {
 			a.settings.Accent = n
 		}
 	}

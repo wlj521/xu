@@ -169,8 +169,8 @@ func (a *App) inspectorContent(c *ui.Context, t *ui.Theme) {
 			ui.Text(c, "本地终端").FontSize(11.5).FontWeight(600).TextColor(colText2)
 			ui.Text(c, "本地会话没有可采集的远程指标。\n打开一个 SSH 连接即可查看 CPU、内存、磁盘与网络。").
 				FontSize(9.5).TextColor(colMuted).TextAlign(ui.Center).LineHeight(1.7)
-			if ghostAction(c, t, "inspector-new-ssh", "新建 SSH 连接", iconPlus).Clicked() {
-				a.openConnectForm()
+			if ghostAction(c, t, "inspector-manage", "连接管理", iconConnections).Clicked() {
+				a.openConnectionManager()
 			}
 		})
 		return

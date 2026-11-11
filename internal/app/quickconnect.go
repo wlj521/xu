@@ -31,11 +31,7 @@ func (a *App) quickConnectView(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Grow(1).FillHeight().Background(colPanelDeep).Children(func() {
 		ui.Scroll(c).Grow(1).Children(func() {
 			ui.Column(c).FillWidth().Padding(24, 30).Gap(15).Children(func() {
-				pageHeader(c, t, iconConnections, "快速连接", a.quickSubtitle(), func() {
-					if primaryAction(c, "qc-new", "新建连接", iconPlus).Clicked() {
-						a.openConnectForm()
-					}
-				})
+				pageHeader(c, t, iconConnections, "快速连接", a.quickSubtitle(), nil)
 
 				a.quickToolbar(c, t)
 				a.quickStatus(c, t)
@@ -163,12 +159,18 @@ func (a *App) quickGroupBlock(c *ui.Context, t *ui.Theme, g qcGroup) {
 
 		for i := 0; i < len(g.items); i += perRow {
 			i := i
-			ui.Row(c).FillWidth().Gap(10).Children(func() {
+			// Fixed-height cells in an explicitly top-aligned row: both
+			// columns start at the same Y even if a card's content grows.
+			ui.Row(c).FillWidth().Height(58).Gap(10).AlignItems(ui.Start).Children(func() {
 				for j := 0; j < perRow && i+j < len(g.items); j++ {
-					a.quickCard(c, t, g.items[i+j])
+					profile := g.items[i+j]
+					cell := ui.Box(c).Grow(1).Height(58)
+					cell.Children(func() {
+						a.quickCard(c, t, profile)
+					})
 				}
 				for j := len(g.items) - i; j < perRow; j++ {
-					ui.Text(c, "").Grow(1)
+					ui.Box(c).Grow(1).Height(58)
 				}
 			})
 		}
@@ -181,7 +183,7 @@ func (a *App) quickCard(c *ui.Context, t *ui.Theme, p store.Profile) {
 	connecting := a.connecting && a.connectingProfileID == p.ID
 
 	card := ui.ButtonBase(c.Key(fmt.Sprintf("qc-conn-%d", p.ID))).
-		Grow(1).Height(58).Padding(0, 12).Gap(10).Radius(9).
+		FillWidth().FillHeight().Padding(0, 12).Gap(10).Radius(9).
 		AlignItems(ui.Center).Label(p.Name)
 	card.Background(colPanel)
 	card.Border(1, colLine)

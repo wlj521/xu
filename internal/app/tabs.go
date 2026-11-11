@@ -621,11 +621,13 @@ func (a *App) tabWidth(c *ui.Context, i int, tab *appTab) float32 {
 	w := float32(65) + numW + nameW
 	if tab.kind == tabQuickConnect {
 		chipW, _ := c.MeasureText(0, ui.Span{Text: "快速连接", Size: 8})
-		w += 6 + chipW
+		// Chip padding plus the gap before it; the old estimate clipped the
+		// chip's right edge in the scroll viewport.
+		w += 14 + chipW
 	}
 	if tab.kind == tabConnecting {
 		chipW, _ := c.MeasureText(0, ui.Span{Text: "连接中", Size: 8})
-		w += 6 + chipW
+		w += 14 + chipW
 	}
 	return w
 }

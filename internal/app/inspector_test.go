@@ -89,6 +89,42 @@ func TestInspectorRendersSSH(t *testing.T) {
 	}
 }
 
+func TestLocalInspectorOffersConnectionManager(t *testing.T) {
+	a := New()
+	a.stop()
+	a.terms = []*termSession{{ID: 1, Title: "PowerShell 7", local: true}}
+	a.syncTabs()
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	if !tt.HasText("连接管理") {
+		t.Fatalf("local monitor has no connection manager action; texts = %q", tt.Texts())
+	}
+	if err := tt.Click("连接管理"); err != nil {
+		t.Fatalf("click 连接管理: %v", err)
+	}
+	if !a.managerOpen {
+		t.Fatal("the local monitor action must open the connection manager")
+	}
+}
+
+func TestSettingsAboutShowsGitHub(t *testing.T) {
+	a := New()
+	a.openSettings()
+	a.settingsSection = 3
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	for _, want := range []string{"GitHub", "在浏览器打开 GitHub"} {
+		if !tt.HasText(want) {
+			t.Fatalf("about section is missing %q; texts = %q", want, tt.Texts())
+		}
+	}
+	if tt.HasText(githubURL) {
+		t.Fatalf("about section should not print the URL; texts = %q", tt.Texts())
+	}
+}
+
 func TestRateBucketsKeepsPeaks(t *testing.T) {
 	rx, tx := rateBuckets([]float64{1, 3, 2, 0}, []float64{2, 1, 5, 4}, 2)
 	if rx[0] != 3 || tx[0] != 2 {

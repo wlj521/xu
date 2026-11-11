@@ -53,3 +53,39 @@ func TestSaveSettingsInMemory(t *testing.T) {
 		t.Fatalf("display = %+v", d)
 	}
 }
+
+func TestAccentChoicesAndDefault(t *testing.T) {
+	if got := defaultSettings().Accent; got != defaultAccent {
+		t.Fatalf("default accent = %d, want %d (mint)", got, defaultAccent)
+	}
+	if len(accentChoices) < 8 {
+		t.Fatalf("accent choices = %d, want the expanded palette", len(accentChoices))
+	}
+	if accentChoices[0].label != "薄荷绿" || accentChoices[0].index != defaultAccent {
+		t.Fatalf("first accent = %+v, want mint as the default", accentChoices[0])
+	}
+	seen := map[int]bool{}
+	for _, choice := range accentChoices {
+		if seen[choice.index] {
+			t.Fatalf("duplicate accent index %d", choice.index)
+		}
+		seen[choice.index] = true
+		accent, second, hover, pressed, soft, line := accentPalette(true, choice.index)
+		if accent == second || hover == pressed || soft.A == 0 || line.A == 0 {
+			t.Fatalf("palette %d is incomplete", choice.index)
+		}
+	}
+}
+
+func TestSettingsShowsAllAccentLabels(t *testing.T) {
+	a := New()
+	a.openSettings()
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	for _, label := range []string{"薄荷绿", "蓝色", "紫色", "橙色", "玫瑰粉", "翡翠绿", "琥珀金", "靛蓝"} {
+		if !tt.HasText(label) {
+			t.Fatalf("settings is missing accent %q; texts = %q", label, tt.Texts())
+		}
+	}
+}

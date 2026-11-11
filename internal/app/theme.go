@@ -158,7 +158,7 @@ func (a *App) updatePalette(dark bool) {
 }
 
 func (a *App) setAccent(index int) {
-	if index < 0 || index > 3 {
+	if index < 0 || index >= len(accentChoices) {
 		return
 	}
 	a.settings.Accent = index
@@ -218,15 +218,35 @@ func (a *App) OnSystemAppearanceChanged() {
 	})
 }
 
-// accentPalette returns the design tokens for one of the four accent choices:
-// accent, accent-2, hover, pressed, accent-soft and accent-line.
+// accentChoices is the order the settings show the accents in: mint green
+// first, which is also the default.
+type accentChoice struct {
+	index int
+	label string
+}
+
+const defaultAccent = 1
+
+var accentChoices = []accentChoice{
+	{1, "薄荷绿"},
+	{0, "蓝色"},
+	{2, "紫色"},
+	{3, "橙色"},
+	{4, "玫瑰粉"},
+	{5, "翡翠绿"},
+	{6, "琥珀金"},
+	{7, "靛蓝"},
+}
+
+// accentPalette returns the design tokens for one accent choice: accent,
+// accent-2, hover, pressed, accent-soft and accent-line.
 func accentPalette(dark bool, index int) (ui.Color, ui.Color, ui.Color, ui.Color, ui.Color, ui.Color) {
-	if index < 0 || index > 3 {
-		index = 0
+	if index < 0 || index >= len(accentChoices) {
+		index = defaultAccent
 	}
 	if dark {
 		switch index {
-		case 1: // teal
+		case 1: // mint green
 			return ui.Hex("#2DD4BF"), ui.Hex("#38BDF8"), ui.Hex("#5EEAD4"), ui.Hex("#14B8A6"),
 				ui.Hex("#2DD4BF").Alpha(0.13), ui.Hex("#2DD4BF").Alpha(0.42)
 		case 2: // violet
@@ -235,13 +255,25 @@ func accentPalette(dark bool, index int) (ui.Color, ui.Color, ui.Color, ui.Color
 		case 3: // orange
 			return ui.Hex("#FB923C"), ui.Hex("#FBBF24"), ui.Hex("#FDBA74"), ui.Hex("#F97316"),
 				ui.Hex("#FB923C").Alpha(0.14), ui.Hex("#FB923C").Alpha(0.44)
+		case 4: // rose
+			return ui.Hex("#F472B6"), ui.Hex("#FDA4AF"), ui.Hex("#F9A8D4"), ui.Hex("#EC4899"),
+				ui.Hex("#F472B6").Alpha(0.14), ui.Hex("#F472B6").Alpha(0.44)
+		case 5: // emerald
+			return ui.Hex("#34D399"), ui.Hex("#5EEAD4"), ui.Hex("#6EE7B7"), ui.Hex("#10B981"),
+				ui.Hex("#34D399").Alpha(0.13), ui.Hex("#34D399").Alpha(0.42)
+		case 6: // gold
+			return ui.Hex("#FBBF24"), ui.Hex("#FDE68A"), ui.Hex("#FCD34D"), ui.Hex("#F59E0B"),
+				ui.Hex("#FBBF24").Alpha(0.14), ui.Hex("#FBBF24").Alpha(0.44)
+		case 7: // indigo
+			return ui.Hex("#818CF8"), ui.Hex("#C7D2FE"), ui.Hex("#A5B4FC"), ui.Hex("#6366F1"),
+				ui.Hex("#818CF8").Alpha(0.13), ui.Hex("#818CF8").Alpha(0.42)
 		default: // blue
 			return ui.Hex("#4D8DFF"), ui.Hex("#38D6FF"), ui.Hex("#6BA3FF"), ui.Hex("#3C7BF0"),
 				ui.Hex("#4D8DFF").Alpha(0.13), ui.Hex("#4D8DFF").Alpha(0.42)
 		}
 	}
 	switch index {
-	case 1: // teal
+	case 1: // mint green
 		return ui.Hex("#0D9488"), ui.Hex("#0891B2"), ui.Hex("#0F766E"), ui.Hex("#115E59"),
 			ui.Hex("#0D9488").Alpha(0.09), ui.Hex("#0D9488").Alpha(0.35)
 	case 2: // violet
@@ -250,6 +282,18 @@ func accentPalette(dark bool, index int) (ui.Color, ui.Color, ui.Color, ui.Color
 	case 3: // orange
 		return ui.Hex("#EA580C"), ui.Hex("#D97706"), ui.Hex("#C2410C"), ui.Hex("#9A3412"),
 			ui.Hex("#EA580C").Alpha(0.09), ui.Hex("#EA580C").Alpha(0.35)
+	case 4: // rose
+		return ui.Hex("#DB2777"), ui.Hex("#E11D48"), ui.Hex("#BE185D"), ui.Hex("#9D174D"),
+			ui.Hex("#DB2777").Alpha(0.09), ui.Hex("#DB2777").Alpha(0.35)
+	case 5: // emerald
+		return ui.Hex("#059669"), ui.Hex("#0D9488"), ui.Hex("#047857"), ui.Hex("#065F46"),
+			ui.Hex("#059669").Alpha(0.09), ui.Hex("#059669").Alpha(0.35)
+	case 6: // gold
+		return ui.Hex("#D97706"), ui.Hex("#CA8A04"), ui.Hex("#B45309"), ui.Hex("#92400E"),
+			ui.Hex("#D97706").Alpha(0.09), ui.Hex("#D97706").Alpha(0.35)
+	case 7: // indigo
+		return ui.Hex("#4F46E5"), ui.Hex("#7C3AED"), ui.Hex("#4338CA"), ui.Hex("#3730A3"),
+			ui.Hex("#4F46E5").Alpha(0.09), ui.Hex("#4F46E5").Alpha(0.35)
 	default: // blue
 		return ui.Hex("#3574F0"), ui.Hex("#0B7FBF"), ui.Hex("#2A63D4"), ui.Hex("#2456BC"),
 			ui.Hex("#3574F0").Alpha(0.09), ui.Hex("#3574F0").Alpha(0.35)

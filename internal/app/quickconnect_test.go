@@ -44,7 +44,7 @@ func TestQuickConnectPageShowsSavedConnections(t *testing.T) {
 
 	for _, want := range []string{
 		"快速连接", "生产环境", "alpha", "root@10.0.0.1:22",
-		"beta", "deploy@10.0.0.2:2222", "未分组", "新建连接", "连接管理",
+		"beta", "deploy@10.0.0.2:2222", "未分组", "连接管理",
 	} {
 		if !tt.HasText(want) {
 			t.Fatalf("quick connect page is missing %q; texts = %q", want, tt.Texts())
