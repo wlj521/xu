@@ -31,7 +31,7 @@ func (a *App) bottomFileContent(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			a.bottomFileTree(c, t, b)
 		}, func() {
 			a.bottomFileTable(c, t, b)
-		}).Grow(1).FillWidth().SplitReset(210)
+		}).Grow(1).FillWidth().SplitReset(260)
 	})
 }
 

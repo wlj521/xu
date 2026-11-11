@@ -184,7 +184,7 @@ func New() *App {
 		activeTerm:         -1,
 		saveProfile:        true,
 		trusted:            make(map[string]string),
-		fileSplit:          210,
+		fileSplit:          260,
 		fileSplitPct:       50,
 		browsers:           make(map[int64]*fileBrowser),
 		monitors:           make(map[int64]*monitorState),

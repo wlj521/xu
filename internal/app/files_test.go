@@ -495,7 +495,9 @@ func TestFileRowContextMenu(t *testing.T) {
 	if !ok {
 		t.Fatalf("file row missing; texts = %q", tt.Texts())
 	}
-	tt.RightClickAt(box.X+box.W/2, box.Y+box.H/2)
+	// Click inside the name cell: the middle of the row-wide box can land on
+	// a column boundary, where no cell takes the context menu.
+	tt.RightClickAt(box.X+40, box.Y+box.H/2)
 	menu := tt.Menu()
 	want := map[string]bool{
 		"新建文件": false, "新建文件夹": false, "删除": false, "下载到本机": false,

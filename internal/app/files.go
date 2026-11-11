@@ -238,7 +238,7 @@ func (a *App) localPane(c *ui.Context, b *fileBrowser, t *ui.Theme) {
 			a.localFileTree(c, t, b)
 		}, func() {
 			a.localFileTable(c, t, b)
-		}).Grow(1).FillWidth().SplitReset(210)
+		}).Grow(1).FillWidth().SplitReset(260)
 	})
 }
 
