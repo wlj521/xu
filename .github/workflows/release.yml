@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check tag matches mygo.json
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}" -replace '^v', ''
+          $version = (Get-Content mygo.json -Raw | ConvertFrom-Json).version
+          if ($version -ne $tag) {
+            throw "Tag ${{ github.ref_name }} does not match mygo.json version $version. Bump mygo.json before tagging."
+          }
+
+      - name: Build portable exe
+        shell: pwsh
+        run: ./build-local.ps1
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Xu ${{ github.ref_name }}
+          files: |
+            build/windows-amd64/Xu.exe
+            build/windows-amd64/*-setup-*-amd64.exe
+            build/windows-amd64/SHA256SUMS
+            build/windows-amd64/MD5SUMS
+          fail_on_unmatched_files: true
+          generate_release_notes: true
