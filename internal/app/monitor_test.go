@@ -2,20 +2,11 @@ package app
 
 import (
 	"testing"
-
-	"github.com/egoist/mygo/ui"
 )
 
 func TestDockTabsAndCollapse(t *testing.T) {
-	a := New()
-	a.formOpen = false
-	a.terms = []*termSession{{ID: 1, Title: "PowerShell 7", local: true}}
-	a.activeTerm = 0
-	a.bottomFiles = true
-
-	tt := ui.NewTester(a.View, 1440, 900)
-	tt.Frame()
-	for _, want := range []string{"文件", "传输", "隧道", "命令", "本地", "文件名"} {
+	a, _, tt := newRemoteDockApp(t)
+	for _, want := range []string{"文件", "传输", "隧道", "命令", "文件名"} {
 		if !tt.HasText(want) {
 			t.Fatalf("dock missing %q; texts = %q", want, tt.Texts())
 		}

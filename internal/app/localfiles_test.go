@@ -8,8 +8,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// TestLocalDockMatchesRemoteLayout pins the local file dock to the remote
-// one: breadcrumbs, a folder tree, and the same full column set.
 func TestLocalPathParts(t *testing.T) {
 	cases := []struct {
 		dir  string
@@ -36,19 +34,15 @@ func TestLocalPathParts(t *testing.T) {
 	}
 }
 
-func TestLocalDockMatchesRemoteLayout(t *testing.T) {
+func TestLocalTerminalHidesBottomDock(t *testing.T) {
 	dir := t.TempDir()
-	sub := filepath.Join(dir, "sub")
-	if err := os.Mkdir(sub, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hi"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	a := New()
 	a.stop()
-	a.terms = []*termSession{{ID: 1, Title: "PowerShell 7", local: true}}
+	a.terms = []*termSession{{ID: 1, Title: "本地终端", local: true}}
 	a.syncTabs()
 	a.bottomFiles = true
 
@@ -57,47 +51,36 @@ func TestLocalDockMatchesRemoteLayout(t *testing.T) {
 	if err := b.setLocalDir(dir); err != nil {
 		t.Fatalf("list %s: %v", dir, err)
 	}
-	b.revealLocalTreePath(dir)
 	a.browsers[1] = b
 
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
 
-	for _, want := range []string{
-		"文件名", "大小", "类型", "修改时间", "权限", "用户/组",
-		"sub/", "notes.txt", "sub", "返回上一级",
-	} {
-		if !tt.HasText(want) {
-			t.Fatalf("local file dock is missing %q; texts = %q", want, tt.Texts())
+	for _, unwanted := range []string{"文件名", "notes.txt", "传输", "隧道", "命令"} {
+		if tt.HasText(unwanted) {
+			t.Fatalf("local terminal shows bottom dock content %q; texts = %q", unwanted, tt.Texts())
 		}
 	}
+	if !tt.HasText("本地终端") {
+		t.Fatalf("local terminal is missing; texts = %q", tt.Texts())
+	}
+}
 
-	// The old local-only header and footer are gone; the path is crumbs now.
-	if _, ok := tt.Find("本机"); ok {
-		t.Fatalf("the old local pane header is still there; texts = %q", tt.Texts())
-	}
-	root, segs := localPathParts(dir)
-	if !tt.HasText(root) {
-		t.Fatalf("the volume crumb %q is missing; texts = %q", root, tt.Texts())
-	}
-	if len(segs) > 0 && !tt.HasText(segs[len(segs)-1]) {
-		t.Fatalf("the current folder crumb %q is missing; texts = %q", segs[len(segs)-1], tt.Texts())
+func TestLocalTerminalIgnoresDockAndFileActions(t *testing.T) {
+	a := New()
+	a.stop()
+	a.terms = []*termSession{{ID: 1, Title: "本地终端", local: true}}
+	a.syncTabs()
+	a.activeTerm = 0
+	a.bottomFiles = false
+
+	a.toggleDock()
+	if a.bottomFiles || a.status == "" {
+		t.Fatalf("toggleDock local: bottomFiles=%v status=%q", a.bottomFiles, a.status)
 	}
 
-	// A folder row opens on a double click, like the remote table.
-	box, ok := tt.Find("sub/")
-	if !ok {
-		t.Fatalf("folder row missing; texts = %q", tt.Texts())
-	}
-	x, y := box.X+40, box.Y+box.H/2
-	tt.ClickAt(x, y)
-	tt.Frame()
-	if b.localDir == sub {
-		t.Fatal("a single click opened the folder")
-	}
-	tt.ClickAt(x, y)
-	tt.Frame()
-	if b.localDir != sub {
-		t.Fatalf("localDir = %q, want %q after double-clicking the folder", b.localDir, sub)
+	a.openFiles()
+	if a.bottomFiles || a.status == "" {
+		t.Fatalf("openFiles local: bottomFiles=%v status=%q", a.bottomFiles, a.status)
 	}
 }

@@ -11,28 +11,32 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 )
 
-func localShell() (string, string, error) {
+func localShell() ([]string, string, error) {
 	if runtime.GOOS == "windows" {
 		if p, err := exec.LookPath("pwsh"); err == nil {
-			return p, "PowerShell 7", nil
+			return []string{p}, "PowerShell 7", nil
 		}
 		if p, err := exec.LookPath("powershell"); err == nil {
-			return p, "Windows PowerShell", nil
+			return []string{p}, "Windows PowerShell", nil
 		}
 		if p, err := exec.LookPath("cmd.exe"); err == nil {
-			return p, "Command Prompt", nil
+			return []string{p}, "Command Prompt", nil
 		}
-		return "", "", fmt.Errorf("未找到 pwsh、powershell 或 cmd.exe")
+		return nil, "", fmt.Errorf("未找到 pwsh、powershell 或 cmd.exe")
 	}
 
-	if sh := os.Getenv("SHELL"); sh != "" {
-		return sh, "本地终端", nil
+	return posixShellCommand(os.Getenv("SHELL")), "本地终端", nil
+}
+
+func posixShellCommand(shell string) []string {
+	if shell == "" {
+		shell = "/bin/sh"
 	}
-	return "/bin/sh", "本地终端", nil
+	return []string{shell, "-l"}
 }
 
 func newLocalTerminal(post func(func()), onSearch func(int64, terminal.SearchStatus), display termDisplay) (*termSession, error) {
-	cmd, title, err := localShell()
+	command, title, err := localShell()
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +48,7 @@ func newLocalTerminal(post func(func()), onSearch func(int64, terminal.SearchSta
 	}
 
 	term, err := terminal.New(terminal.Options{
-		Command:      []string{cmd},
+		Command:      command,
 		Scrollback:   display.Scrollback,
 		Font:         display.Font,
 		CopyOnSelect: copyOnSelect(display),

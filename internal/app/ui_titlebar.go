@@ -11,6 +11,10 @@ func (a *App) titleBar(c *ui.Context, t *ui.Theme, bar ui.TitleBar) {
 	if h < titleBarHeight {
 		h = titleBarHeight
 	}
+	rightWidth := monitorWidth(c) - (bar.Right + 10)
+	if rightWidth < 150 {
+		rightWidth = 150
+	}
 
 	ui.Row(c).Height(h).Shrink(0).AlignItems(ui.Center).
 		Background(colPanelTop).
@@ -18,7 +22,10 @@ func (a *App) titleBar(c *ui.Context, t *ui.Theme, bar ui.TitleBar) {
 		Padding(0, bar.Right+10, 0, 0).Children(func() {
 		a.titleBrand(c, t, h)
 		a.titleChip(c, t, h)
-		a.titleActions(c, t, h)
+		ui.Row(c).Width(rightWidth).Height(h).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "").Grow(1)
+			a.titleActions(c, t, h)
+		})
 	})
 }
 
@@ -36,6 +43,7 @@ func (a *App) titleBrand(c *ui.Context, t *ui.Theme, h float32) {
 
 func (a *App) titleChip(c *ui.Context, t *ui.Theme, h float32) {
 	ui.Row(c).Grow(1).Height(h).AlignItems(ui.Center).Padding(0, 16).DragWindow().Children(func() {
+		ui.Text(c, "").Grow(1)
 		b := ui.ButtonBase(c.Key("title-search")).Grow(1).MaxWidth(420).Height(28).
 			Padding(0, 10).Radius(8).Gap(8).AlignItems(ui.Center)
 		b.Background(colPanel).Border(1, colLine)
@@ -56,6 +64,7 @@ func (a *App) titleChip(c *ui.Context, t *ui.Theme, h float32) {
 			a.searchOpen = true
 			a.searchQuery = ""
 		}
+		ui.Text(c, "").Grow(1)
 	})
 }
 

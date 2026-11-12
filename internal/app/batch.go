@@ -39,11 +39,13 @@ func (a *App) openBatch() {
 	if a.finding {
 		a.closeFind()
 	}
-	if a.activeTerminal() == nil {
-		a.OpenLocalTerminal()
+	ts := a.activeTerminal()
+	if ts == nil {
+		a.status = "请先连接一台 SSH 服务器"
+		return
 	}
-	if a.activeTerminal() == nil {
-		a.status = "请先打开一个终端"
+	if ts.local {
+		a.status = "批量命令需要先打开 SSH 会话"
 		return
 	}
 	a.setDockTab(dockCommands)

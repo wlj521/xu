@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"xu/internal/monitorx"
@@ -63,12 +64,13 @@ func (a *App) shellMain(c *ui.Context, t *ui.Theme) {
 		case len(a.terms) == 0:
 			a.shellWelcome(c, t)
 		default:
+			local := a.activeTerminal() != nil && a.activeTerminal().local
 			termPane := func() {
 				ui.Column(c).FillHeight().Background(colTermBg).Children(func() {
 					a.terminal(c)
 				})
 			}
-			if a.bottomFiles {
+			if !local && a.bottomFiles {
 				// The divider between the terminal and the file dock can be
 				// dragged up and down; double-click resets it to 64%.
 				ui.SplitVerticalPercent(c, &a.splitPercent, termPane, func() {
@@ -76,7 +78,9 @@ func (a *App) shellMain(c *ui.Context, t *ui.Theme) {
 				}).Grow(1).SplitReset(64)
 			} else {
 				termPane()
-				a.dockShell(c, t)
+				if !local {
+					a.dockShell(c, t)
+				}
 			}
 		}
 	})
@@ -203,7 +207,7 @@ func (a *App) shellStatusBar(c *ui.Context, t *ui.Theme) {
 		a.statusSep(c)
 		ui.Text(c, "UTF-8").FontSize(8.2).Font("Cascadia Code").TextColor(colMuted2)
 		a.statusSep(c)
-		ui.Text(c, "Xu 0.3.0").FontSize(8.2).Font("Cascadia Code").TextColor(colMuted2)
+		ui.Text(c, "Xu "+mygo.App.Version()).FontSize(8.2).Font("Cascadia Code").TextColor(colMuted2)
 	})
 }
 
@@ -241,25 +245,237 @@ func shortLabel(s string, max int) string {
 }
 
 func (a *App) shellWelcome(c *ui.Context, t *ui.Theme) {
-	ui.Column(c).Grow(1).Fill().Center().Padding(32).Gap(9).Children(func() {
-		ui.Box(c).Size(46, 46).Radius(14).
-			Background(colCyan.Alpha(0.08)).Border(1, colCyan.Alpha(0.22)).Center().Children(func() {
-			iconEl(c, iconServer, 22, colCyan)
+	w, ch := c.Size()
+	wide := w-monitorWidth(c) >= 820
+	minHeight := ch - 100
+	if minHeight < 480 {
+		minHeight = 480
+	}
+
+	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+		ui.Column(c).FillWidth().MinHeight(minHeight).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Grow(1).MinHeight(28)
+			ui.Column(c).FillWidth().MaxWidth(900).Gap(16).Children(func() {
+				a.welcomeHero(c, t, wide)
+				a.welcomeFeatures(c, t, wide)
+				a.welcomeRecent(c, t, wide)
+				a.welcomeShortcuts(c, wide)
+			})
+			ui.Box(c).Grow(1).MinHeight(28)
 		})
-		ui.Text(c, "还没有打开的会话").FontSize(15).FontWeight(650)
-		ui.Text(c, "点顶部 + 打开快速连接选择服务器，或直接打开本地终端").FontSize(11).TextColor(colMuted)
-		ui.Row(c).Gap(8).Margin(6, 0, 0, 0).Children(func() {
+	})
+}
+
+func (a *App) welcomeHero(c *ui.Context, t *ui.Theme, wide bool) {
+	ui.Column(c).FillWidth().Padding(26).Radius(16).
+		Gradient(colPanelTop, colPanelDeep, 135).Border(1, colLine).
+		Shadow(0, 18, 46, 0, ui.Hex("#000000").Alpha(0.16)).Children(func() {
+		if wide {
+			ui.Row(c).FillWidth().Gap(30).AlignItems(ui.Center).Children(func() {
+				a.welcomeIntro(c, t, true)
+				a.welcomeTerminalPreview(c, t, true)
+			})
+			return
+		}
+		ui.Column(c).FillWidth().Gap(22).Children(func() {
+			a.welcomeIntro(c, t, false)
+			a.welcomeTerminalPreview(c, t, false)
+		})
+	})
+}
+
+func (a *App) welcomeIntro(c *ui.Context, t *ui.Theme, grow bool) {
+	intro := ui.Column(c).Gap(14)
+	if grow {
+		intro = intro.Grow(1)
+	} else {
+		intro = intro.FillWidth()
+	}
+	intro.Children(func() {
+		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+			statusDot(c, colAmber, 6)
+			ui.Text(c, "还没有打开的会话").FontSize(9.2).FontWeight(600).TextColor(colAmber)
+			ui.Text(c, "·").FontSize(9).TextColor(colMuted2)
+			ui.Text(c, "XU SSH WORKBENCH").FontSize(8.4).FontWeight(650).
+				LetterSpacing(1.3).TextColor(colMuted2)
+		})
+		ui.Text(c, "连接服务器，\n开始今天的工作。").FontSize(26).FontWeight(650).
+			TextColor(colText).LineHeight(1.18)
+		ui.Text(c, "多标签终端、SFTP 文件、实时监控和端口转发，都在一个原生窗口里。").
+			FontSize(11.2).TextColor(colMuted).LineHeight(1.65).MaxWidth(500)
+		ui.Row(c).Gap(9).Margin(2, 0, 0, 0).Children(func() {
 			if primaryAction(c, "welcome-quick", "快速连接", iconPlus).Clicked() {
 				a.openQuickTab()
 				a.status = "从快速连接中选择服务器"
 			}
-			if ghostAction(c, t, "welcome-new", "新建连接", nil).Clicked() {
-				a.openConnectForm()
+			if ghostAction(c, t, "welcome-manager", "连接管理", iconManager).Clicked() {
+				a.openConnectionManager()
 			}
 			if ghostAction(c, t, "welcome-local", "本地终端", iconTerm).Clicked() {
 				a.OpenLocalTerminal()
 			}
 		})
+		ui.Row(c).Gap(6).Margin(1, 0, 0, 0).Children(func() {
+			miniTag(c, "原生 UI", colCyan)
+			miniTag(c, "Ghostty VT", colViolet)
+			miniTag(c, "Ed25519 更新", colGreen)
+		})
+	})
+}
+
+func (a *App) welcomeTerminalPreview(c *ui.Context, t *ui.Theme, fixedWidth bool) {
+	card := ui.Column(c).Padding(14).Radius(12).Background(colTermBg).
+		Border(1, colTermLine).Gap(9)
+	if fixedWidth {
+		card = card.Width(320)
+	} else {
+		card = card.FillWidth()
+	}
+	card.Children(func() {
+		ui.Row(c).FillWidth().Gap(5).AlignItems(ui.Center).Children(func() {
+			statusDot(c, colRed, 7)
+			statusDot(c, colAmber, 7)
+			statusDot(c, colGreen, 7)
+			ui.Text(c, "xu · terminal").Font("Cascadia Code").FontSize(8.4).
+				TextColor(colMuted2).Margin(4, 0, 0, 0)
+			ui.Text(c, "").Grow(1)
+			miniTag(c, "示例", colMuted2)
+		})
+		hairline(c)
+		ui.Column(c).Gap(4).Children(func() {
+			welcomeTermLine(c, "$", "ssh root@prod-01", colText, colCyan)
+			welcomeTermLine(c, "✓", "connected · 28 ms", colGreen, colGreen)
+			welcomeTermLine(c, "›", "tail -f access.log", colMuted, colMuted2)
+		})
+		ui.Box(c).FillWidth().Height(1).Background(colTermLine)
+		ui.Row(c).FillWidth().Gap(10).Children(func() {
+			welcomeMetric(c, "CPU", 0.12, "12%", colCyan)
+			welcomeMetric(c, "MEM", 0.38, "38%", colAmber)
+			welcomeMetric(c, "NET", 0.66, "↓ 1.2M", colGreen)
+		})
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			statusDot(c, colGreen, 5)
+			ui.Text(c, "3 个会话 · 28 ms").FontSize(8.4).TextColor(colMuted2)
+		})
+	})
+}
+
+func welcomeTermLine(c *ui.Context, mark, text string, color, markColor ui.Color) {
+	ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, mark).Font("Cascadia Code").FontSize(9.4).TextColor(markColor)
+		ui.Text(c, text).Font("Cascadia Code").FontSize(9.4).TextColor(color).NoWrap()
+	})
+}
+
+func welcomeMetric(c *ui.Context, label string, value float64, text string, color ui.Color) {
+	ui.Column(c).Grow(1).Gap(4).Children(func() {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Text(c, label).Font("Cascadia Code").FontSize(7.6).TextColor(colMuted2)
+			ui.Text(c, "").Grow(1)
+			ui.Text(c, text).Font("Cascadia Code").FontSize(8.2).TextColor(color)
+		})
+		ui.Progress(c, value).FillWidth().Height(3)
+	})
+}
+
+func (a *App) welcomeFeatures(c *ui.Context, t *ui.Theme, wide bool) {
+	ui.Column(c).FillWidth().Gap(10).Children(func() {
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "工作台能力").FontSize(9.5).FontWeight(650).LetterSpacing(0.8).
+				TextColor(colMuted2)
+			ui.Box(c).Height(1).Grow(1).Background(colLine)
+		})
+		if wide {
+			ui.Row(c).FillWidth().Gap(10).Children(func() {
+				a.welcomeFeature(c, iconTerm, "多标签终端", "SSH 与本地 Shell", colCyan)
+				a.welcomeFeature(c, iconFolder, "SFTP 文件", "浏览、上传、编辑", colViolet)
+				a.welcomeFeature(c, iconActivity, "实时监控", "CPU、内存、网络", colGreen)
+				a.welcomeFeature(c, iconLink, "端口转发", "本地、远程、SOCKS5", colAmber)
+			})
+			return
+		}
+		ui.Row(c).FillWidth().Gap(10).Children(func() {
+			a.welcomeFeature(c, iconTerm, "多标签终端", "SSH 与本地 Shell", colCyan)
+			a.welcomeFeature(c, iconFolder, "SFTP 文件", "浏览、上传、编辑", colViolet)
+		})
+		ui.Row(c).FillWidth().Gap(10).Children(func() {
+			a.welcomeFeature(c, iconActivity, "实时监控", "CPU、内存、网络", colGreen)
+			a.welcomeFeature(c, iconLink, "端口转发", "本地、远程、SOCKS5", colAmber)
+		})
+	})
+}
+
+func (a *App) welcomeFeature(c *ui.Context, icon *ui.SVG, title, sub string, color ui.Color) {
+	ui.Column(c).Grow(1).Height(96).Padding(13).Radius(12).
+		Background(colPanel.Alpha(0.72)).Border(1, colLine).Gap(7).Children(func() {
+		ui.Box(c).Size(30, 30).Radius(8).Background(color.Alpha(0.09)).
+			Border(1, color.Alpha(0.2)).Center().Children(func() {
+			iconEl(c, icon, 14, color)
+		})
+		ui.Text(c, title).FontSize(11).FontWeight(600).TextColor(colText)
+		ui.Text(c, sub).FontSize(9).TextColor(colMuted).NoWrap()
+	})
+}
+
+func (a *App) welcomeRecent(c *ui.Context, t *ui.Theme, wide bool) {
+	if len(a.profiles) == 0 {
+		return
+	}
+	slots := 3
+	if !wide {
+		slots = 2
+	}
+	limit := slots
+	if limit > len(a.profiles) {
+		limit = len(a.profiles)
+	}
+
+	ui.Column(c).FillWidth().Gap(9).Children(func() {
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			iconEl(c, iconHistory, 12, colMuted2)
+			ui.Text(c, "最近连接").FontSize(9.5).FontWeight(650).LetterSpacing(0.8).
+				TextColor(colMuted2)
+			miniTag(c, fmt.Sprintf("%d", len(a.profiles)), colMuted2)
+			ui.Box(c).Height(1).Grow(1).Background(colLine)
+			if len(a.profiles) > limit {
+				if quietAction(c, t, "welcome-all-connections", "全部", iconChevronRight, false).Clicked() {
+					a.openConnectionManager()
+				}
+			}
+		})
+		ui.Row(c).FillWidth().Height(58).Gap(10).AlignItems(ui.Start).Children(func() {
+			for i := 0; i < limit; i++ {
+				p := a.profiles[i]
+				cell := ui.Box(c).Grow(1).Height(58)
+				cell.Children(func() { a.quickCard(c, t, p) })
+			}
+			for i := limit; i < slots; i++ {
+				ui.Box(c).Grow(1).Height(58)
+			}
+		})
+	})
+}
+
+func (a *App) welcomeShortcuts(c *ui.Context, wide bool) {
+	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+		welcomeShortcut(c, "Ctrl K", "搜索")
+		welcomeShortcut(c, "Ctrl Alt T", "新标签")
+		welcomeShortcut(c, "Ctrl Shift O", "文件")
+		if wide {
+			welcomeShortcut(c, "Ctrl J", "底部面板")
+		}
+		ui.Text(c, "").Grow(1)
+		if wide {
+			ui.Text(c, "连接成功后可直接保存会话").FontSize(8.8).TextColor(colMuted2)
+		}
+	})
+}
+
+func welcomeShortcut(c *ui.Context, key, label string) {
+	ui.Row(c).Height(24).Padding(0, 8).Radius(6).Background(colPanel2.Alpha(0.55)).
+		Border(1, colLine).Gap(6).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, key).Font("Cascadia Code").FontSize(8.2).TextColor(colText2)
+		ui.Text(c, label).FontSize(9).TextColor(colMuted)
 	})
 }
 

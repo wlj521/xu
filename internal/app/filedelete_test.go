@@ -269,10 +269,6 @@ func TestDeleteDialogAsksInAppLook(t *testing.T) {
 	if tt.HasText("删除文件夹") || tt.HasText("此操作不可撤销") {
 		t.Fatalf("the delete dialog is still drawn; texts = %q", tt.Texts())
 	}
-	// The panel is back in front, still listing the folder it never removed.
-	if !tt.HasText("admin.old-20261111-152628/") {
-		t.Fatalf("file panel did not come back; texts = %q", tt.Texts())
-	}
 	if _, err := os.Stat(folder); err != nil {
 		t.Fatalf("cancel removed the folder: %v", err)
 	}

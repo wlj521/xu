@@ -419,7 +419,7 @@ func (a *App) inspectorServer(c *ui.Context, t *ui.Theme) {
 					inspectorCard(c, t, func() {
 						inspectorCardHead(c, t, "本地终端", "LOCAL")
 						inspectorKV(c, t, "程序", ts.Title)
-						inspectorKV(c, t, "类型", "Windows PowerShell / pwsh")
+						inspectorKV(c, t, "类型", "本地 Shell")
 						inspectorKV(c, t, "工作目录", shortLabel(terminalDir(ts), 26))
 						inspectorKVMono(c, t, "编码", "UTF-8")
 					})

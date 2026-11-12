@@ -1,27 +1,31 @@
 # Xu
 
-> 一个原生 Windows SSH 工作台：多标签终端、SFTP 文件管理、实时服务器监控、端口转发与批量命令，不使用 WebView。
+> 一个原生跨平台 SSH 工作台：多标签终端、SFTP 文件管理、实时服务器监控、端口转发与批量命令，不使用 WebView。
 
 ![Xu 主界面：左侧服务器监控、中间终端、底部文件面板](design/images/main.png)
 
-- 版本：`0.3.0`
-- 技术栈：Go `1.27.3` + [mygo](https://github.com/egoist/mygo) `0.8.3` 原生 UI + Ghostty VT
-- 平台：Windows 10 1809+ / Windows 11（x64）
+![Xu 欢迎页：快速连接、连接管理、最近连接与工作台能力](design/images/welcome.png)
 
-> **打包命令：**
+- 版本：`0.3.1`
+- 技术栈：Go `1.27.3` + [mygo](https://github.com/egoist/mygo) `0.8.3` 原生 UI + Ghostty VT
+- 平台：Windows（x64）、macOS（Universal）、Linux（amd64 / arm64）
+
+> **Windows 打包：**
 >
 > ```powershell
 > .\build-local.ps1
 > ```
+>
+> **macOS / Linux 打包：** 使用下方 `go tool mygo build -platform ...`。
 
 ---
 
 ## 功能
 
 - **会话管理**：用户自建分组、保存 SSH 连接、密码/私钥认证、主机密钥 TOFU 校验、快速连接与连接管理器；支持从 JSON 连接配置批量导入服务器；同一服务器可开多个标签页（自动编号区分）。
-- **终端**：多标签页 SSH 终端与本地 PowerShell 终端（顶部标签栏切换/关闭，同一服务器可开多个标签）、查找、清屏、断线重连。
-- **日志高亮**：内置通用日志、Nginx、JSON 三套规则包，自动给时间戳、TRACE/DEBUG/INFO/WARN/ERROR、线程、logger、IP、HTTP 方法等字段着色；支持自定义正则/关键字、16 色调色板、整行/加粗和排序，也可以添加多条自定义日志格式（从行首匹配的正则）来识别特殊日志行。修改即时作用于已打开的 SSH 终端的新输出；含 ANSI 颜色、进度条和全屏程序的行原样放行（本地 PowerShell 暂不支持）。详见 [日志高亮使用说明](docs/log-highlight.md)。
-- **文件**：底部文件面板：左侧目录树、面包屑路径，文件名 / 大小 / 类型 / 修改时间 / 权限 / 用户组列表；远程会话浏览远端 SFTP，本地终端浏览本机；远端默认从 `/` 打开，单击选中、双击目录进入下一层，面板高度可上下拖动（双击分隔条复位），支持上传、下载、新建文件/文件夹、重命名、删除（文件夹连同其中的内容一起删除，可随时停止）、远程文本编辑。
+- **终端**：多标签页 SSH 终端与本地终端（顶部标签栏切换/关闭，同一服务器可开多个标签）、查找、清屏、断线重连。
+- **日志高亮**：内置通用日志、Nginx、JSON 三套规则包，自动给时间戳、TRACE/DEBUG/INFO/WARN/ERROR、线程、logger、IP、HTTP 方法等字段着色；支持自定义正则/关键字、16 色调色板、整行/加粗和排序，也可以添加多条自定义日志格式（从行首匹配的正则）来识别特殊日志行。修改即时作用于已打开的 SSH 终端的新输出；含 ANSI 颜色、进度条和全屏程序的行原样放行（本地终端暂不支持）。详见 [日志高亮使用说明](docs/log-highlight.md)。
+- **文件**：底部文件面板：左侧目录树、面包屑路径，文件名 / 大小 / 类型 / 修改时间 / 权限 / 用户组列表；SSH 会话浏览远端 SFTP，本地终端不显示底部文件面板；远端默认从 `/` 打开，单击选中、双击目录进入下一层，面板高度可上下拖动（双击分隔条复位），支持上传、下载、新建文件/文件夹、重命名、删除（文件夹连同其中的内容一起删除，可随时停止）、远程文本编辑。
 - **监控**：左侧常驻服务器监控：CPU、内存、交换、网络上下行柱状图（可按网卡筛选）、延迟曲线、磁盘挂载点、进程内存/CPU 与主机信息；顶部显示服务器 IP，点击复制；可收起到侧边。
 - **隧道**：本地转发、远程转发、SOCKS5。
 - **批量命令**：在多台已保存主机上执行同一条命令。
@@ -52,9 +56,11 @@
 
 ## 环境要求
 
-- Windows 10 1809+ / Windows 11，x64
+- Windows 10 1809+ / Windows 11（x64）
+- macOS 12+（Intel / Apple Silicon）
+- Linux（amd64 / arm64）
 - Go `1.27.3`
-- PowerShell 7 或 Windows PowerShell 5.1
+- Windows 打包需要 PowerShell 7 或 Windows PowerShell 5.1
 - 不需要单独安装 mygo：`go.mod` 已把 mygo CLI 固定为 Go tool
 
 ```powershell
@@ -71,7 +77,7 @@ go tool mygo dev
 
 ## 打包命令
 
-### 本地构建（便携版 + NSIS 安装包）
+### Windows 本地构建（便携版 + NSIS 安装包）
 
 ```powershell
 .\build-local.ps1
@@ -91,9 +97,9 @@ build\windows-amd64\MD5SUMS
 `SHA256SUMS` / `MD5SUMS` 是便携版和安装包的校验值（`sha256sum` / `md5sum` 格式）。建议使用 SHA-256 校验完整性；MD5 仅为兼容旧工具保留，不建议作为安全校验。Windows 上可这样对照：
 
 ```powershell
-Get-FileHash .\xu-setup-0.3.0-amd64.exe -Algorithm SHA256
+Get-FileHash .\xu-setup-0.3.1-amd64.exe -Algorithm SHA256
 # 或者
-certutil -hashfile .\xu-setup-0.3.0-amd64.exe SHA256
+certutil -hashfile .\xu-setup-0.3.1-amd64.exe SHA256
 ```
 
 便携版 `Xu.exe` 已经包含：
@@ -116,7 +122,7 @@ certutil -hashfile .\xu-setup-0.3.0-amd64.exe SHA256
 
 如果杀毒软件拦截 DLL 释放，应用会缺少终端或会话库功能；把项目目录/输出目录加入信任即可。
 
-### 多文件构建
+### Windows 多文件构建
 
 直接调用 mygo，不启用单文件封装：
 
@@ -145,6 +151,22 @@ go tool mygo build -platform windows/amd64
 
 输出包含 `xu-setup-<version>-amd64.exe` 以及同目录的 exe/DLL。mygo 在 Windows 上缺少 NSIS 时会自动下载；其他平台需要自行安装 `makensis`。当前安装包未签名，Windows SmartScreen 可能提示风险。
 
+### macOS / Linux 安装包
+
+macOS（Universal，包含 Intel 与 Apple Silicon；DMG 需要在 macOS 上生成）：
+
+```bash
+go tool mygo build -platform darwin/universal
+```
+
+Linux（amd64 / arm64，生成 Debian 包、tar.gz 和 PKGBUILD）：
+
+```bash
+go tool mygo build -platform linux/amd64,linux/arm64
+```
+
+产物分别在 `build/darwin-universal/`、`build/linux-amd64/` 和 `build/linux-arm64/`。macOS DMG 默认使用 ad-hoc 签名；正式分发建议配置 Apple Developer ID 并做公证，否则首次打开可能需要右键“打开”。
+
 ### 图标没有刷新？
 
 `mygo build` 生成的 exe 图标已经是新的。如果资源管理器/任务栏仍显示旧图标，通常是 Windows 图标缓存：
@@ -169,14 +191,24 @@ powershell -ExecutionPolicy Bypass -File .\build-local.ps1
 
 ## 发布
 
-推送 `v*` 标签后，GitHub Actions 会在 `windows-latest` 上自动运行 `build-local.ps1`，把便携版 `Xu.exe`、NSIS 安装包和 `SHA256SUMS` / `MD5SUMS` 作为附件创建 GitHub Release：
+推送 `v*` 标签后，GitHub Actions 会并行构建三个平台，然后统一创建一个 GitHub Release：
+
+- Windows x64：便携版 `Xu.exe`、NSIS 安装包
+- macOS Universal：`.dmg`、自动更新归档
+- Linux amd64 / arm64：`.deb`、`.tar.gz`、`PKGBUILD`
+
+Release 同时包含各平台的 `update-*.json`、签名更新归档和 `install.sh` / `install.ps1`，并生成统一的 `SHA256SUMS` / `MD5SUMS`。
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
-工作流会核对标签与 `mygo.json` 的 `version`，发版前先更新版本号。Release 同时上传自动更新所需的 `update-windows-amd64.json`、签名归档和 `install.ps1`。
+工作流会核对标签与 `mygo.json` 的 `version`，发版前先更新版本号。macOS 和 Linux 可以使用同一条安装脚本：
+
+```bash
+curl -fsSL https://github.com/wlj521/xu/releases/latest/download/install.sh | sh
+```
 
 > 自动更新从 v0.1.1 起生效；v0.1.0 用户需要先手动安装一次带自动更新的版本（v0.1.1 或更高）。
 

@@ -62,7 +62,6 @@ func main() {
 		a.Attach(win)
 		a.ApplyThemeSource()
 		mygo.Theme.OnUpdated(func() { a.OnSystemAppearanceChanged() })
-		a.OpenLocalTerminal()
 	})
 
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { a.Close() })

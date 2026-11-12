@@ -12,7 +12,7 @@ func TestBatchPanelRendersInDock(t *testing.T) {
 	a := New()
 	a.formOpen = false
 	a.profiles = []store.Profile{{ID: 1, Name: "test-server"}}
-	a.terms = []*termSession{{ID: 1, Title: "本地终端", local: true}}
+	a.terms = []*termSession{{ID: 1, Title: "test-server"}}
 	a.activeTerm = 0
 	a.bottomFiles = true
 	a.openBatch()

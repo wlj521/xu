@@ -8,7 +8,7 @@ import (
 	"xu/internal/app"
 )
 
-func TestConnectionForm(t *testing.T) {
+func TestConnectionManagerFromWelcome(t *testing.T) {
 	a := app.New()
 	tt := ui.NewTester(a.View, 1280, 800)
 	tt.Frame()
@@ -17,9 +17,18 @@ func TestConnectionForm(t *testing.T) {
 		t.Fatalf("texts = %q", tt.Texts())
 	}
 
+	if err := tt.Click("连接管理"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("连接管理器") {
+		t.Fatalf("connection manager missing; texts = %q", tt.Texts())
+	}
+
 	if err := tt.Click("新建连接"); err != nil {
 		t.Fatal(err)
 	}
+	tt.Frame()
 	if !tt.HasText("新建 SSH 连接") || !tt.HasText("名称") {
 		t.Fatalf("connection modal missing; texts = %q", tt.Texts())
 	}

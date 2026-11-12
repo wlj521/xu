@@ -202,6 +202,10 @@ func (a *App) ensureDockBrowser() {
 }
 
 func (a *App) setDockTab(tab dockTab) {
+	if ts := a.activeTerminal(); ts != nil && ts.local {
+		a.status = "本地终端不显示底部面板"
+		return
+	}
 	if a.bottomFileTab < 0 || a.bottomFileTab > int(dockCommands) {
 		a.bottomFileTab = int(dockFiles)
 	}
@@ -223,8 +227,13 @@ func (a *App) setDockTab(tab dockTab) {
 }
 
 func (a *App) toggleDock() {
-	if len(a.terms) == 0 {
+	ts := a.activeTerminal()
+	if ts == nil {
 		a.status = "请先打开一个终端"
+		return
+	}
+	if ts.local {
+		a.status = "本地终端不显示底部面板"
 		return
 	}
 	if a.bottomFiles {

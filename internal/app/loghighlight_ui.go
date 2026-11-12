@@ -37,7 +37,7 @@ func (a *App) settingsLogHighlight(c *ui.Context, t *ui.Theme) {
 				a.applyLogPreset(a.logPresetPick)
 			}
 		})
-		settingsNote(c, iconTerm, "含 ANSI 颜色、进度条和全屏程序的行会原样放行；本地 PowerShell 暂不支持。")
+		settingsNote(c, iconTerm, "含 ANSI 颜色、进度条和全屏程序的行会原样放行；本地终端暂不支持。")
 	})
 }
 

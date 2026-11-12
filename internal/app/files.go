@@ -158,11 +158,13 @@ func (a *App) openFiles() {
 	if a.finding {
 		a.closeFind()
 	}
-	if a.activeTerminal() == nil {
-		a.OpenLocalTerminal()
+	ts := a.activeTerminal()
+	if ts == nil {
+		a.status = "请先连接一台 SSH 服务器"
+		return
 	}
-	if a.activeTerminal() == nil {
-		a.status = "请先打开一个终端"
+	if ts.local {
+		a.status = "本地终端不提供文件面板"
 		return
 	}
 	a.setDockTab(dockFiles)

@@ -9,7 +9,25 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Check tag matches mygo.json
+        shell: bash
+        run: |
+          version=$(python3 -c 'import json; print(json.load(open("mygo.json"))["version"])')
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match mygo.json version ${version}." >&2
+            echo "Bump mygo.json before tagging." >&2
+            exit 1
+          fi
+
+  windows:
+    needs: version
     runs-on: windows-latest
     steps:
       - name: Check out
@@ -21,32 +39,149 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Check tag matches mygo.json
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}" -replace '^v', ''
-          $version = (Get-Content mygo.json -Raw | ConvertFrom-Json).version
-          if ($version -ne $tag) {
-            throw "Tag ${{ github.ref_name }} does not match mygo.json version $version. Bump mygo.json before tagging."
-          }
-
-      - name: Build portable exe
+      - name: Build Windows portable and installer
         shell: pwsh
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: ./build-local.ps1
 
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            build/windows-amd64/Xu.exe
+            build/windows-amd64/*-setup-*-amd64.exe
+            build/windows-amd64/update-windows-amd64.json
+            build/windows-amd64/xu-*-windows-amd64.tar.gz
+            build/windows-amd64/install.ps1
+          if-no-files-found: error
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build macOS app and DMG
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: go tool mygo build -platform darwin/universal -o build
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            build/darwin-universal/*.dmg
+            build/darwin-universal/update-darwin-universal.json
+            build/darwin-universal/xu-*-darwin-universal.tar.gz
+          if-no-files-found: error
+
+  linux:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Linux packages
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: go tool mygo build -platform linux/amd64,linux/arm64 -o build
+
+      - name: Upload Linux amd64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: |
+            build/linux-amd64/*.deb
+            build/linux-amd64/xu-*-linux-amd64.tar.gz
+            build/linux-amd64/update-linux-amd64.json
+            build/linux-amd64/PKGBUILD
+            build/linux-amd64/install.sh
+          if-no-files-found: error
+
+      - name: Upload Linux arm64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: |
+            build/linux-arm64/*.deb
+            build/linux-arm64/xu-*-linux-arm64.tar.gz
+            build/linux-arm64/update-linux-arm64.json
+            build/linux-arm64/PKGBUILD
+          if-no-files-found: error
+
+  release:
+    needs: [windows, macos, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble release files and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+
+          cp artifacts/windows/Xu.exe release/
+          cp artifacts/windows/*-setup-*-amd64.exe release/
+          cp artifacts/windows/update-windows-amd64.json release/
+          cp artifacts/windows/xu-*-windows-amd64.tar.gz release/
+          cp artifacts/windows/install.ps1 release/
+
+          cp artifacts/macos/*.dmg release/
+          cp artifacts/macos/update-darwin-universal.json release/
+          cp artifacts/macos/xu-*-darwin-universal.tar.gz release/
+
+          cp artifacts/linux-amd64/update-linux-amd64.json release/
+          cp artifacts/linux-amd64/xu-*-linux-amd64.tar.gz release/
+          cp artifacts/linux-amd64/*.deb release/
+          cp artifacts/linux-amd64/PKGBUILD release/PKGBUILD-amd64
+
+          cp artifacts/linux-arm64/update-linux-arm64.json release/
+          cp artifacts/linux-arm64/xu-*-linux-arm64.tar.gz release/
+          cp artifacts/linux-arm64/*.deb release/
+          cp artifacts/linux-arm64/PKGBUILD release/PKGBUILD-arm64
+
+          # install.sh is platform-agnostic: it detects Linux or macOS itself.
+          cp artifacts/linux-amd64/install.sh release/
+          chmod +x release/install.sh
+
+          cd release
+          : > SHA256SUMS
+          : > MD5SUMS
+          find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name MD5SUMS -printf '%f\n' |
+            sort |
+            while IFS= read -r file; do
+              sha256sum "$file" >> SHA256SUMS
+              md5sum "$file" >> MD5SUMS
+            done
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: Xu ${{ github.ref_name }}
-          files: |
-            build/windows-amd64/Xu.exe
-            build/windows-amd64/*-setup-*-amd64.exe
-            build/windows-amd64/SHA256SUMS
-            build/windows-amd64/MD5SUMS
-            build/windows-amd64/update-windows-amd64.json
-            build/windows-amd64/xu-*-windows-amd64.tar.gz
-            build/windows-amd64/install.ps1
+          files: release/*
           fail_on_unmatched_files: true
           generate_release_notes: true
