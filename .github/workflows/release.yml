@@ -153,17 +153,22 @@ jobs:
           cp artifacts/windows/install.ps1 release/
 
           cp artifacts/macos/*.dmg release/
+          cp artifacts/macos/*.dmg release/xu-darwin-universal.dmg
           cp artifacts/macos/update-darwin-universal.json release/
           cp artifacts/macos/xu-*-darwin-universal.tar.gz release/
 
           cp artifacts/linux-amd64/update-linux-amd64.json release/
           cp artifacts/linux-amd64/xu-*-linux-amd64.tar.gz release/
+          cp artifacts/linux-amd64/xu-*-linux-amd64.tar.gz release/xu-linux-amd64.tar.gz
           cp artifacts/linux-amd64/*.deb release/
+          cp artifacts/linux-amd64/*.deb release/xu-linux-amd64.deb
           cp artifacts/linux-amd64/PKGBUILD release/PKGBUILD-amd64
 
           cp artifacts/linux-arm64/update-linux-arm64.json release/
           cp artifacts/linux-arm64/xu-*-linux-arm64.tar.gz release/
+          cp artifacts/linux-arm64/xu-*-linux-arm64.tar.gz release/xu-linux-arm64.tar.gz
           cp artifacts/linux-arm64/*.deb release/
+          cp artifacts/linux-arm64/*.deb release/xu-linux-arm64.deb
           cp artifacts/linux-arm64/PKGBUILD release/PKGBUILD-arm64
 
           # install.sh is platform-agnostic: it detects Linux or macOS itself.

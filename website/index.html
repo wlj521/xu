@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Xu — 原生 SSH 工作台</title>
 <meta name="description" content="多标签终端、SFTP 文件、实时监控、端口转发与批量命令，一个原生的跨平台 SSH 工作台。Windows、macOS、Linux，不使用 WebView。">
-<meta name="theme-color" content="#F2ECDB">
+<meta name="theme-color" content="#F8F5EC">
 <meta property="og:title" content="Xu — 原生 SSH 工作台">
 <meta property="og:description" content="多标签终端、SFTP 文件、实时监控、端口转发与批量命令，都在一个原生窗口里。">
 <meta property="og:type" content="website">
@@ -160,7 +160,7 @@
       </div>
       <p>Intel 与 Apple Silicon 通用镜像。下载 .dmg 后打开，把 Xu 拖进「应用程序」即可。</p>
       <div class="platform-actions">
-        <a class="btn btn-primary" href="https://github.com/wlj521/xu/releases/latest">下载 .dmg</a>
+        <a class="btn btn-primary" href="https://github.com/wlj521/xu/releases/latest/download/xu-darwin-universal.dmg">下载 .dmg</a>
       </div>
     </article>
 
@@ -171,12 +171,14 @@
       </div>
       <p>提供 .deb、tar.gz 和 PKGBUILD。也可以用安装脚本自动识别平台与架构，下载并安装最新版本。</p>
       <div class="platform-actions">
-        <a class="btn btn-primary" href="https://github.com/wlj521/xu/releases/latest">.deb 与 tar.gz</a>
+        <a class="btn btn-primary" href="https://github.com/wlj521/xu/releases/latest/download/xu-linux-amd64.deb">下载 .deb · amd64</a>
+        <a class="btn btn-ghost" href="https://github.com/wlj521/xu/releases/latest/download/xu-linux-arm64.deb">下载 .deb · arm64</a>
         <button class="btn btn-ghost copy-btn" type="button" data-copy="curl -fsSL https://github.com/wlj521/xu/releases/latest/download/install.sh | sh">复制安装命令</button>
       </div>
       <div class="command">
         <code>curl -fsSL https://<wbr>github.com/<wbr>wlj521/<wbr>xu/<wbr>releases/<wbr>latest/<wbr>download/<wbr>install.sh | sh</code>
       </div>
+      <p class="alt-links">或下载 tar.gz：<a href="https://github.com/wlj521/xu/releases/latest/download/xu-linux-amd64.tar.gz">amd64</a><span>·</span><a href="https://github.com/wlj521/xu/releases/latest/download/xu-linux-arm64.tar.gz">arm64</a></p>
     </article>
 
     <p class="footnote">从 v0.1.1 起支持自动更新，安装包使用 Ed25519 签名校验。所有版本的 SHA256 / MD5 校验文件都在 <a href="https://github.com/wlj521/xu/releases" rel="noopener">GitHub Releases</a>。</p>

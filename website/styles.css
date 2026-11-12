@@ -1,13 +1,13 @@
 :root {
-  --paper: #f2ecdb;
-  --paper-deep: #e8dfc8;
+  --paper: #f8f5ec;
+  --paper-deep: #ede7d9;
   --ink: #191713;
   --ink-soft: #514b3e;
   --muted: #6b6454;
   --mint: #14c8ad;
   --mint-ink: #0a6e60;
   --charcoal: #1e1f22;
-  --line: #cfc5ac;
+  --line: #d9d2c2;
   --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Cascadia Code", "Cascadia Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
 }
@@ -89,6 +89,7 @@ a {
 .brand img {
   display: block;
   border-radius: 5px;
+  box-shadow: 0 0 0 1px rgba(25, 23, 19, 0.09);
 }
 
 .brand-name {
@@ -569,6 +570,26 @@ h1 .line {
   white-space: nowrap;
 }
 
+.alt-links {
+  grid-column: 2 / -1;
+  margin: 14px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.alt-links a {
+  color: var(--ink);
+  border-bottom: 1px solid var(--mint-ink);
+}
+
+.alt-links a:hover {
+  color: var(--mint-ink);
+}
+
+.alt-links span {
+  margin: 0 8px;
+}
+
 .footnote {
   margin: 40px 0 0;
   font-size: 12.5px;
@@ -611,6 +632,7 @@ h1 .line {
 .footer-brand img {
   display: block;
   border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(25, 23, 19, 0.09);
 }
 
 .footer-brand .brand-name {
@@ -787,6 +809,10 @@ h1 .line {
 
   .command code {
     white-space: normal;
+  }
+
+  .alt-links {
+    grid-column: 1 / -1;
   }
 
   .footer-inner {
