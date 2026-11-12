@@ -146,6 +146,8 @@ jobs:
 
           cp artifacts/windows/Xu.exe release/
           cp artifacts/windows/*-setup-*-amd64.exe release/
+          # A stable name lets the website link straight to the latest installer.
+          cp artifacts/windows/*-setup-*-amd64.exe release/xu-setup-amd64.exe
           cp artifacts/windows/update-windows-amd64.json release/
           cp artifacts/windows/xu-*-windows-amd64.tar.gz release/
           cp artifacts/windows/install.ps1 release/
