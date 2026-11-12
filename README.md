@@ -9,6 +9,7 @@
 - 版本：`0.3.2`
 - 技术栈：Go `1.27.3` + [mygo](https://github.com/egoist/mygo) `0.9.0` 原生 UI + Ghostty VT
 - 平台：Windows（x64）、macOS（Universal）、Linux（amd64 / arm64）
+- 项目主页：<https://wlj521.github.io/xu/>
 
 > **Windows 打包：**
 >

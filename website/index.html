@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xu — 原生 SSH 工作台</title>
+<meta name="description" content="多标签终端、SFTP 文件、实时监控、端口转发与批量命令，一个原生的跨平台 SSH 工作台。Windows、macOS、Linux，不使用 WebView。">
+<meta name="theme-color" content="#F2ECDB">
+<meta property="og:title" content="Xu — 原生 SSH 工作台">
+<meta property="og:description" content="多标签终端、SFTP 文件、实时监控、端口转发与批量命令，都在一个原生窗口里。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://wlj521.github.io/xu/">
+<meta property="og:image" content="https://wlj521.github.io/xu/assets/welcome.png">
+<link rel="icon" href="assets/icon-64.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body id="top">
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#top" aria-label="Xu 首页">
+      <img src="assets/icon-64.png" alt="" width="28" height="28">
+      <span class="brand-name">Xu</span>
+      <span class="brand-sub">SSH 工作台</span>
+    </a>
+    <nav class="nav" aria-label="主导航">
+      <a href="#features">功能</a>
+      <a href="#workbench">快速连接</a>
+      <a href="https://github.com/wlj521/xu" rel="noopener">GitHub</a>
+    </nav>
+    <a class="btn btn-primary btn-small" href="#download">下载</a>
+  </div>
+</header>
+
+<main>
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="kicker"><span class="kicker-dot" aria-hidden="true"></span>XU SSH WORKBENCH</p>
+      <h1><span class="line">连接服务器，</span><span class="line">开始今天的工作。</span></h1>
+      <p class="lede">多标签终端、SFTP 文件、实时监控和端口转发，都在一个原生窗口里。没有 WebView，也不是网页套壳。</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#download">下载 Xu</a>
+        <a class="btn btn-ghost" href="https://github.com/wlj521/xu" rel="noopener">查看源码</a>
+      </div>
+      <p class="meta">Windows 10/11 · macOS 12+ · Linux amd64 / arm64</p>
+    </div>
+    <figure class="hero-shot">
+      <div class="shot-plate">
+        <img src="assets/main.png" alt="Xu 主界面：左侧服务器监控、中间多标签终端、底部 SFTP 文件面板" width="3072" height="1824">
+      </div>
+      <figcaption><span class="live-dot" aria-hidden="true"></span>Windows 11 · 实际界面</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="spec-strip" aria-label="技术特性">
+  <div class="wrap">
+    <ul>
+      <li>Go 原生 UI</li>
+      <li>无 WebView</li>
+      <li>Ghostty VT</li>
+      <li>617 套终端配色</li>
+      <li>Windows · macOS · Linux</li>
+      <li>Ed25519 签名更新</li>
+    </ul>
+  </div>
+</section>
+
+<section id="features" class="features">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>工作台能力</h2>
+      <span class="section-note">一个窗口，六个面板</span>
+    </div>
+    <div class="feature-grid">
+      <article class="feature">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M7 9l3 3-3 3M13 15h4"/></svg>
+        <h3>多标签终端</h3>
+        <p>SSH 与本地 Shell 共用标签栏，同一台服务器可以开多个会话。查找、清屏、断线重连都在标签菜单里。</p>
+      </article>
+      <article class="feature">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a1.5 1.5 0 0 1 1.5-1.5h4l2 2h8A1.5 1.5 0 0 1 20 9v8.5A1.5 1.5 0 0 1 18.5 19h-14A1.5 1.5 0 0 1 3 17.5z"/><path d="M3 10h18"/></svg>
+        <h3>SFTP 文件面板</h3>
+        <p>在底部面板浏览远端目录，上传、下载、新建、重命名、删除和远程编辑。面板高度可拖动，双击分隔条复位。</p>
+      </article>
+      <article class="feature">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M6 14l2.5-3 2 2.5L13.5 9l2 3.5L18 10"/></svg>
+        <h3>实时监控</h3>
+        <p>CPU、内存、交换、网络、延迟、磁盘和进程常驻左侧。收起后保留侧边展开栏，随时拉回。</p>
+      </article>
+      <article class="feature">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h11M16 3.5L19.5 7 16 10.5M16 17H5M8 13.5L4.5 17 8 20.5"/></svg>
+        <h3>端口转发</h3>
+        <p>本地转发、远程转发与 SOCKS5 三种方式，在「隧道」面板里统一管理。</p>
+      </article>
+      <article class="feature">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="12" height="12" rx="1.5"/><path d="M8 20h12V8"/><path d="M7.5 9l2 2-2 2"/></svg>
+        <h3>批量命令</h3>
+        <p>在多台已保存的主机上执行同一条命令，不必逐个开终端。</p>
+      </article>
+      <article class="feature">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="8" r="1"/><circle cx="8.6" cy="12" r="1"/><circle cx="15.4" cy="12" r="1"/><circle cx="12" cy="16" r="1"/></svg>
+        <h3>配色与日志高亮</h3>
+        <p>617 套 Ghostty / iTerm2 终端配色。内置通用、Nginx、JSON 日志规则，也可以写自己的正则与关键字。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="workbench" class="workbench">
+  <div class="wrap workbench-grid">
+    <div class="workbench-copy">
+      <h2>打开就能连，<br>连上就开干。</h2>
+      <p>快速连接、最近连接和连接管理器都在首页。连接过程以终端样式显示 TCP、加密协商、认证和打开终端的真实阶段与耗时。</p>
+      <ul class="bullets">
+        <li>同一台服务器可以开多个标签，自动编号区分</li>
+        <li>主机密钥 TOFU 校验，支持密码与私钥认证</li>
+        <li>支持从 JSON 连接配置批量导入服务器</li>
+      </ul>
+      <div class="keys" aria-label="常用快捷键">
+        <span class="keycap"><kbd>Ctrl</kbd><kbd>K</kbd>搜索</span>
+        <span class="keycap"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>T</kbd>新标签</span>
+        <span class="keycap"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd>文件</span>
+        <span class="keycap"><kbd>Ctrl</kbd><kbd>J</kbd>底部面板</span>
+      </div>
+    </div>
+    <figure class="workbench-shot">
+      <img src="assets/welcome.png" alt="Xu 欢迎页：快速连接、连接管理、最近连接与快捷键提示" width="1941" height="1197" loading="lazy">
+      <figcaption>欢迎页 · 快速连接 / 最近连接</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="download" class="download">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>下载 Xu</h2>
+      <span class="section-note">始终指向最新版本</span>
+    </div>
+
+    <article class="platform">
+      <div class="platform-name">
+        <h3>Windows</h3>
+        <span class="mono">x64 · Windows 10 1809+</span>
+      </div>
+      <p>单文件便携版，终端引擎与会话库都封装在 exe 里。另有 NSIS 安装包：安装到本机、创建开始菜单快捷方式并支持卸载。</p>
+      <div class="platform-actions">
+        <a class="btn btn-primary" href="https://github.com/wlj521/xu/releases/latest/download/Xu.exe">下载便携版</a>
+        <a class="btn btn-ghost" href="https://github.com/wlj521/xu/releases/latest">安装包与校验文件</a>
+      </div>
+    </article>
+
+    <article class="platform">
+      <div class="platform-name">
+        <h3>macOS</h3>
+        <span class="mono">Universal · macOS 12+</span>
+      </div>
+      <p>Intel 与 Apple Silicon 通用镜像。下载 .dmg 后打开，把 Xu 拖进「应用程序」即可。</p>
+      <div class="platform-actions">
+        <a class="btn btn-primary" href="https://github.com/wlj521/xu/releases/latest">下载 .dmg</a>
+      </div>
+    </article>
+
+    <article class="platform">
+      <div class="platform-name">
+        <h3>Linux</h3>
+        <span class="mono">amd64 / arm64</span>
+      </div>
+      <p>提供 .deb、tar.gz 和 PKGBUILD。也可以用安装脚本自动识别平台与架构，下载并安装最新版本。</p>
+      <div class="platform-actions">
+        <a class="btn btn-primary" href="https://github.com/wlj521/xu/releases/latest">.deb 与 tar.gz</a>
+        <button class="btn btn-ghost copy-btn" type="button" data-copy="curl -fsSL https://github.com/wlj521/xu/releases/latest/download/install.sh | sh">复制安装命令</button>
+      </div>
+      <div class="command">
+        <code>curl -fsSL https://<wbr>github.com/<wbr>wlj521/<wbr>xu/<wbr>releases/<wbr>latest/<wbr>download/<wbr>install.sh | sh</code>
+      </div>
+    </article>
+
+    <p class="footnote">从 v0.1.1 起支持自动更新，安装包使用 Ed25519 签名校验。所有版本的 SHA256 / MD5 校验文件都在 <a href="https://github.com/wlj521/xu/releases" rel="noopener">GitHub Releases</a>。</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <img src="assets/icon-64.png" alt="" width="24" height="24">
+      <span class="brand-name">Xu</span>
+      <span>原生 SSH 工作台</span>
+    </div>
+    <nav class="footer-nav" aria-label="页脚导航">
+      <a href="https://github.com/wlj521/xu" rel="noopener">GitHub</a>
+      <a href="https://github.com/wlj521/xu/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/wlj521/xu/blob/master/docs/log-highlight.md" rel="noopener">日志高亮文档</a>
+      <a href="https://github.com/egoist/mygo" rel="noopener">mygo</a>
+    </nav>
+    <p class="fine">Go + mygo 原生 UI + Ghostty VT · © <span id="year">2026</span> Xu</p>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>
