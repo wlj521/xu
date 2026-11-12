@@ -106,7 +106,7 @@ certutil -hashfile .\xu-setup-0.3.2-amd64.exe SHA256
 
 - 应用图标（嵌入 PE 资源）
 - `ghostty-vt.dll`（终端引擎）
-- `mygo-sqlite3.dll`（会话数据库）
+- `Sqlitecore.dll`（会话数据库）
 
 首次运行时，两个 DLL 会释放到用户缓存：
 
@@ -118,7 +118,7 @@ certutil -hashfile .\xu-setup-0.3.2-amd64.exe SHA256
 
 - 构建脚本先跑一次普通 mygo build 取得 DLL
 - 再把 DLL 放进 `internal/bundle/assets/`，用 `-tags=portable` 重新编译
-- 程序入口在加载任何插件前释放 DLL，并设置 `MYGO_GHOSTTY_VT`、`MYGO_SQLITE_LIBRARY`
+- 程序入口在加载任何插件前释放 DLL，并设置 `MYGO_GHOSTTY_VT`、`MYGO_NATIVE_SQLITECORE`
 
 如果杀毒软件拦截 DLL 释放，应用会缺少终端或会话库功能；把项目目录/输出目录加入信任即可。
 
@@ -135,7 +135,7 @@ go tool mygo build -platform windows/amd64 -skip-installer
 ```text
 Xu.exe
 ghostty-vt.dll
-mygo-sqlite3.dll
+Sqlitecore.dll
 icon.png（可选）
 ```
 

@@ -3,6 +3,7 @@
 ## 0.3.2
 
 - 依赖维护：升级 mygo 至 v0.9.0（原生 UI 框架与构建工具），升级 golang.org/x/crypto 至 v0.59.0，并更新相关间接依赖。
+- 适配 mygo v0.9.0 的 SQLite 原生库更名（`Sqlitecore.dll`），修复 Windows 便携版打包失败。
 
 ## 0.3.1
 

@@ -21,7 +21,7 @@ import (
 //go:embed assets/ghostty-vt.dll
 var ghosttyDLL []byte
 
-//go:embed assets/mygo-sqlite3.dll
+//go:embed assets/Sqlitecore.dll
 var sqliteDLL []byte
 
 // Prepare unpacks the embedded DLLs and points the terminal and SQLite
@@ -36,12 +36,12 @@ func Prepare() error {
 	if err != nil {
 		return err
 	}
-	sqlite, err := unpack(dir, "mygo-sqlite3.dll", sqliteDLL)
+	sqlite, err := unpack(dir, "Sqlitecore.dll", sqliteDLL)
 	if err != nil {
 		return err
 	}
 	_ = os.Setenv("MYGO_GHOSTTY_VT", ghostty)
-	_ = os.Setenv("MYGO_SQLITE_LIBRARY", sqlite)
+	_ = os.Setenv("MYGO_NATIVE_SQLITECORE", sqlite)
 	return nil
 }
 
