@@ -1,7 +1,7 @@
 {
   "name": "Xu",
   "identifier": "dev.example.xu",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "icon": "resources/icon.png",
   "out": "build",
   "linux": {

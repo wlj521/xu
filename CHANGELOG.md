@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- 依赖维护：升级 mygo 至 v0.9.0（原生 UI 框架与构建工具），升级 golang.org/x/crypto 至 v0.59.0，并更新相关间接依赖。
+
 ## 0.3.1
 
 - 支持 Windows、macOS（Universal）和 Linux（amd64 / arm64）多平台打包；GitHub Actions 会并行构建并汇总各平台安装包、自动更新归档和校验文件。
