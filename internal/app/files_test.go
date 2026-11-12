@@ -310,18 +310,29 @@ func TestPathBarParentCrumbStillNavigates(t *testing.T) {
 	}
 }
 
-func TestSingleClickFolderOpensNextLevel(t *testing.T) {
+func TestDoubleClickFolderOpensNextLevel(t *testing.T) {
 	_, b, tt := newRemoteDockApp(t)
-	if err := clickText(tt, "etc/"); err != nil {
-		t.Fatalf("click folder: %v", err)
+	box, ok := tt.Find("etc/")
+	if !ok {
+		t.Fatalf("folder row missing; texts = %q", tt.Texts())
 	}
+	x, y := box.X+40, box.Y+box.H/2
+
+	tt.ClickAt(x, y)
+	tt.Frame()
 	if b.remoteSel != 0 {
 		t.Fatalf("folder row not chosen: sel=%d", b.remoteSel)
 	}
-	// A browser without SFTP cannot open the folder: the attempt proves the
-	// single click navigated instead of waiting for a double click.
+	// A browser without SFTP cannot open the folder, so the error proves
+	// whether the click navigated; one click must only choose the row.
+	if b.remoteErr != "" {
+		t.Fatalf("a single click opened the folder: err=%q", b.remoteErr)
+	}
+
+	tt.ClickAt(x, y)
+	tt.Frame()
 	if b.remoteErr != "SFTP 不可用" {
-		t.Fatalf("folder click did not try to open it: err=%q", b.remoteErr)
+		t.Fatalf("double click did not try to open the folder: err=%q", b.remoteErr)
 	}
 }
 
@@ -463,18 +474,100 @@ func TestSortEntries(t *testing.T) {
 	}
 }
 
-func TestPromptNewLocalFile(t *testing.T) {
-	dir := t.TempDir()
-	b := newFileBrowser(1, nil, dir, "")
+// newEntryApp lays out a local file dock so the create dialog can be driven
+// through the real view.
+func newEntryApp(t *testing.T, dir string) (*App, *fileBrowser, *ui.Tester) {
+	t.Helper()
 	a := New()
+	a.stop()
+	a.terms = []*termSession{{ID: 1, Title: "PowerShell 7", local: true}}
+	a.syncTabs()
+	a.bottomFiles = true
+
+	b := newFileBrowser(1, nil, dir, "")
+	b.localMode = true
+	if err := b.setLocalDir(dir); err != nil {
+		t.Fatalf("list %s: %v", dir, err)
+	}
+	b.revealLocalTreePath(dir)
+	a.browsers[1] = b
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	return a, b, tt
+}
+
+func TestNewFileDialogCreatesLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	a, b, tt := newEntryApp(t, dir)
+
 	a.promptNewFile(b, false)
-	a.promptValue = "notes.txt"
-	a.submitPrompt()
-	if a.fileErr != "" {
-		t.Fatalf("new file: %s", a.fileErr)
+	tt.Frame()
+	for _, want := range []string{"新建文件", "本机磁盘", "取消", "创建"} {
+		if !tt.HasText(want) {
+			t.Fatalf("new file dialog is missing %q; texts = %q", want, tt.Texts())
+		}
+	}
+	if active, _ := tt.TextInputActive(); !active {
+		t.Fatal("the name field does not have the keyboard focus")
+	}
+
+	tt.Type("notes.txt")
+	tt.Frame()
+	if err := clickText(tt, "创建"); err != nil {
+		t.Fatalf("create button: %v", err)
+	}
+	tt.Frame()
+
+	if a.newEntryOpen {
+		t.Fatal("the dialog stayed open after creating the file")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "notes.txt")); err != nil {
 		t.Fatalf("new file not created: %v", err)
+	}
+}
+
+func TestNewFolderDialogCreatesLocalFolder(t *testing.T) {
+	dir := t.TempDir()
+	a, b, tt := newEntryApp(t, dir)
+
+	a.promptMkdir(b, false)
+	tt.Frame()
+	if !tt.HasText("新建文件夹") {
+		t.Fatalf("new folder dialog missing its title; texts = %q", tt.Texts())
+	}
+
+	tt.Type("logs")
+	tt.Frame()
+	if err := clickText(tt, "创建"); err != nil {
+		t.Fatalf("create button: %v", err)
+	}
+	tt.Frame()
+
+	f, err := os.Stat(filepath.Join(dir, "logs"))
+	if err != nil || !f.IsDir() {
+		t.Fatalf("new folder not created: %v", err)
+	}
+}
+
+func TestNewEntryDialogRejectsBadName(t *testing.T) {
+	dir := t.TempDir()
+	a, b, tt := newEntryApp(t, dir)
+
+	a.promptNewFile(b, false)
+	tt.Frame()
+	tt.Type("bad/name")
+	tt.Frame()
+	if err := clickText(tt, "创建"); err != nil {
+		t.Fatalf("create button: %v", err)
+	}
+	tt.Frame()
+
+	if !a.newEntryOpen || a.newEntryErr == "" {
+		t.Fatalf("an invalid name closed the dialog or showed no error: open=%v err=%q", a.newEntryOpen, a.newEntryErr)
+	}
+	if !tt.HasText("名称不能为空，且不能包含 / 或 \\") {
+		t.Fatalf("the dialog does not show the name error; texts = %q", tt.Texts())
 	}
 }
 
@@ -531,13 +624,33 @@ func TestFilePromptShownOnce(t *testing.T) {
 	}
 }
 
-func TestQuickRemoveRejectsDirectory(t *testing.T) {
+// A folder on the remote server offers the quick rm item too, as the menu
+// names rm rather than the confirmed delete.
+func TestFolderContextMenuOffersQuickRemove(t *testing.T) {
+	_, _, tt := newRemoteDockApp(t)
+	box, ok := tt.Find("etc/")
+	if !ok {
+		t.Fatalf("folder row missing; texts = %q", tt.Texts())
+	}
+	tt.RightClickAt(box.X+40, box.Y+box.H/2)
+	menu := tt.Menu()
+	for _, item := range menu {
+		if item == "快速删除（rm）" {
+			return
+		}
+	}
+	t.Fatalf("folder context menu %q missing %q", menu, "快速删除（rm）")
+}
+
+// The local pane keeps the confirmed delete only, so a local folder still has
+// no quick rm.
+func TestQuickRemoveLocalDirectoryRejected(t *testing.T) {
 	a := New()
 	b := newFileBrowser(1, nil, t.TempDir(), "")
-	b.remoteEntries = []os.FileInfo{fakeInfo{name: "logs", dir: true}}
-	b.remoteSel = 0
+	b.localEntries = []os.FileInfo{fakeInfo{name: "logs", dir: true}}
+	b.localSel = 0
 
-	a.quickRemoveSelected(b, true)
+	a.quickRemoveSelected(b, false)
 	if a.fileErr != "快速删除仅支持文件，目录请使用“删除”" {
 		t.Fatalf("quick remove directory error = %q", a.fileErr)
 	}

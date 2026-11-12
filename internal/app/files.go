@@ -15,10 +15,15 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
 )
 
 type fileBrowser struct {
-	termID     int64
+	termID int64
+	// ssh is the terminal's SSH connection, used to run rm on the server
+	// itself. client is the SFTP subsystem opened over that same connection;
+	// remote deletes fall back to it when the server does not offer exec.
+	ssh        *ssh.Client
 	client     *sftp.Client
 	remoteHome string
 	// localMode marks a browser that browses this machine's disk (a local
@@ -188,6 +193,7 @@ func (a *App) ensureFileBrowser(ts *termSession) (*fileBrowser, error) {
 	remoteHome := "/"
 
 	b := newFileBrowser(ts.ID, sc, localDir, remoteHome)
+	b.ssh = ts.client
 	a.browsers[ts.ID] = b
 	return b, nil
 }
@@ -301,7 +307,9 @@ func (a *App) fileContextMenu(m *ui.Menu, b *fileBrowser, remote bool) {
 		if m.Item("删除").Chosen() {
 			a.deleteSelected(b, remote)
 		}
-		if remote && !f.IsDir() && m.Item("快速删除（rm）").Chosen() {
+		// Local entries keep the confirmed delete only; on a remote server the
+		// quick path covers a folder as well, as rm -rf would.
+		if remote && m.Item("快速删除（rm）").Chosen() {
 			a.quickRemoveSelected(b, true)
 		}
 	}
@@ -445,6 +453,9 @@ func fileTableTheme(t *ui.Theme) *ui.Theme {
 	tableTheme.Accent = colAccentSoft
 	tableTheme.AccentText = colText
 	tableTheme.Focus = colAccentLine
+	// Only a chosen row is painted: the pointer passing over the list on its
+	// way to the toolbar must not light rows up.
+	tableTheme.SurfaceHover = colTreeBg
 	return &tableTheme
 }
 
@@ -453,11 +464,12 @@ func bottomRemoteCell(c *ui.Context, b *fileBrowser, row, col int) {
 		return
 	}
 	f := b.remoteEntries[row]
+	chosen := b.remoteSel == row
 	switch col {
 	case 0:
-		fileCell(c, f, "—", 0)
+		fileCell(c, f, "—", 0, chosen)
 	case 1:
-		fileCell(c, f, "—", 1)
+		fileCell(c, f, "—", 1, chosen)
 	case 2:
 		ui.Text(c, f.ModTime().Format("2006/01/02 15:04")).FontSize(10.2).
 			Font("Cascadia Code").TextColor(colMuted).NoWrap()
@@ -522,8 +534,14 @@ func fileVisual(f os.FileInfo) (*ui.SVG, ui.Color) {
 	return iconFile, colMuted
 }
 
-func fileTypeIcon(c *ui.Context, f os.FileInfo) ui.Element {
+// fileTypeIcon shows the entry's type, in the type's color only for the row
+// chosen, as the folder tree colors only the folder it is in: the list stays
+// quiet until something is selected.
+func fileTypeIcon(c *ui.Context, f os.FileInfo, chosen bool) ui.Element {
 	icon, color := fileVisual(f)
+	if !chosen {
+		color = colMuted
+	}
 	tile := ui.Box(c).Size(22, 22).Shrink(0).Radius(6).
 		Background(color.Alpha(0.11)).Center()
 	tile.Children(func() {
@@ -532,7 +550,7 @@ func fileTypeIcon(c *ui.Context, f os.FileInfo) ui.Element {
 	return tile
 }
 
-func fileCell(c *ui.Context, f os.FileInfo, owner string, col int) {
+func fileCell(c *ui.Context, f os.FileInfo, owner string, col int, chosen bool) {
 	switch col {
 	case 0:
 		name := f.Name()
@@ -540,8 +558,9 @@ func fileCell(c *ui.Context, f os.FileInfo, owner string, col int) {
 			name += "/"
 		}
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			fileTypeIcon(c, f)
-			ui.Text(c, name).FontSize(12.2).Font("Cascadia Code").TextColor(colText2).NoWrap()
+			fileTypeIcon(c, f, chosen)
+			ui.Text(c, name).FontSize(12.2).Font("Cascadia Code").
+				TextColor(condColor(chosen, colText, colText2)).NoWrap()
 		})
 	case 1:
 		if !f.IsDir() {
@@ -574,7 +593,7 @@ func remoteCell(c *ui.Context, b *fileBrowser, row, col int) {
 			owner = fmt.Sprintf("%d / %d", st.UID, st.GID)
 		}
 	}
-	fileCell(c, f, owner, col)
+	fileCell(c, f, owner, col, b.remoteSel == row)
 }
 
 func (a *App) navigateLocal(b *fileBrowser, dir string) {
@@ -1056,74 +1075,6 @@ func copyWithProgress(ctx context.Context, dst io.Writer, src io.Reader, total i
 	}
 }
 
-func (a *App) promptNewFile(b *fileBrowser, remote bool) {
-	title := "新建本地文件"
-	if remote {
-		title = "新建远程文件"
-	}
-	a.openPrompt(title, "", func(name string) {
-		if !validName(name) {
-			a.fileErr = "名称不能为空，且不能包含 / 或 \\"
-			return
-		}
-		var err error
-		if remote {
-			if b.client == nil {
-				a.fileErr = "SSH 连接不可用"
-				return
-			}
-			var f interface{ Close() error }
-			f, err = b.client.Create(path.Join(b.remoteDir, name))
-			if err == nil && f != nil {
-				err = f.Close()
-			}
-		} else {
-			var f *os.File
-			f, err = os.OpenFile(filepath.Join(b.localDir, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-			if err == nil && f != nil {
-				err = f.Close()
-			}
-		}
-		if err != nil {
-			a.fileErr = "创建失败: " + err.Error()
-			return
-		}
-		if remote {
-			b.loadRemote()
-		} else {
-			b.loadLocal()
-		}
-	})
-}
-
-func (a *App) promptMkdir(b *fileBrowser, remote bool) {
-	title := "新建本地文件夹"
-	if remote {
-		title = "新建远程文件夹"
-	}
-	a.openPrompt(title, "", func(name string) {
-		if !validName(name) {
-			a.fileErr = "名称不能为空，且不能包含 / 或 \\"
-			return
-		}
-		var err error
-		if remote {
-			err = b.client.Mkdir(path.Join(b.remoteDir, name))
-		} else {
-			err = os.Mkdir(filepath.Join(b.localDir, name), 0o755)
-		}
-		if err != nil {
-			a.fileErr = "创建失败: " + err.Error()
-			return
-		}
-		if remote {
-			b.loadRemote()
-		} else {
-			b.loadLocal()
-		}
-	})
-}
-
 func (a *App) promptRename(b *fileBrowser, remote bool) {
 	var f os.FileInfo
 	if remote {
@@ -1160,50 +1111,6 @@ func (a *App) promptRename(b *fileBrowser, remote bool) {
 	})
 }
 
-func (a *App) deleteSelected(b *fileBrowser, remote bool) {
-	var f os.FileInfo
-	if remote {
-		f = selectedEntry(b.remoteEntries, b.remoteSel)
-	} else {
-		f = selectedEntry(b.localEntries, b.localSel)
-	}
-	if f == nil {
-		a.fileErr = "请先选择一个文件"
-		return
-	}
-
-	res, _ := mygo.Dialog.Message(mygo.MessageOptions{
-		Type:               mygo.MessageWarning,
-		Message:            "删除「" + f.Name() + "」？",
-		Buttons:            []string{"取消", "删除"},
-		DestructiveButtons: []int{1},
-	})
-	if res.Button != 1 {
-		return
-	}
-
-	var err error
-	if remote {
-		if f.IsDir() {
-			err = b.client.RemoveDirectory(path.Join(b.remoteDir, f.Name()))
-		} else {
-			err = b.client.Remove(path.Join(b.remoteDir, f.Name()))
-		}
-	} else {
-		err = os.Remove(filepath.Join(b.localDir, f.Name()))
-	}
-	if err != nil {
-		a.fileErr = "删除失败: " + err.Error()
-		return
-	}
-
-	if remote {
-		b.loadRemote()
-	} else {
-		b.loadLocal()
-	}
-}
-
 func (a *App) quickRemoveSelected(b *fileBrowser, remote bool) {
 	var f os.FileInfo
 	if remote {
@@ -1215,32 +1122,139 @@ func (a *App) quickRemoveSelected(b *fileBrowser, remote bool) {
 		a.fileErr = "请先选择一个文件"
 		return
 	}
-	if f.IsDir() {
-		a.fileErr = "快速删除仅支持文件，目录请使用“删除”"
-		return
-	}
 
-	var err error
-	if remote {
-		if b.client == nil {
-			a.fileErr = "SSH 连接不可用"
+	if !remote {
+		if f.IsDir() {
+			a.fileErr = "快速删除仅支持文件，目录请使用“删除”"
 			return
 		}
-		err = b.client.Remove(path.Join(b.remoteDir, f.Name()))
-	} else {
-		err = os.Remove(filepath.Join(b.localDir, f.Name()))
-	}
-	if err != nil {
-		a.fileErr = "删除失败: " + err.Error()
+		if err := os.Remove(filepath.Join(b.localDir, f.Name())); err != nil {
+			a.fileErr = "删除失败: " + err.Error()
+			return
+		}
+		a.status = "已删除 " + f.Name()
+		b.loadLocal()
 		return
 	}
 
-	a.status = "已删除 " + f.Name()
-	if remote {
-		b.loadRemote()
-	} else {
-		b.loadLocal()
+	if b.client == nil {
+		a.fileErr = "SSH 连接不可用"
+		return
 	}
+	target := path.Join(b.remoteDir, f.Name())
+
+	// A file is done in one command; a folder can take a while even on the
+	// server, so its rm runs off the UI thread and the status line reports it.
+	if !f.IsDir() {
+		if err := remoteQuickRemove(a.ctx, b.ssh, b.client, target); err != nil {
+			a.fileErr = "删除失败: " + err.Error()
+			return
+		}
+		a.status = "已删除 " + f.Name()
+		b.loadRemote()
+		return
+	}
+
+	sshClient, client := b.ssh, b.client
+	a.fileErr = ""
+	a.status = "正在删除 " + f.Name() + "…"
+	go func() {
+		err := remoteQuickRemove(a.ctx, sshClient, client, target)
+		a.post(func() {
+			b.loadRemote()
+			switch {
+			case err == nil:
+				a.status = "已删除 " + f.Name()
+			case errors.Is(err, context.Canceled):
+				a.status = "已停止删除"
+			default:
+				a.status = ""
+				a.fileErr = "删除失败: " + err.Error()
+			}
+		})
+	}()
+}
+
+// remoteQuickRemove is the menu's "快速删除（rm）" on a remote entry. With the
+// terminal's SSH connection it runs rm -rf on the server, so a folder costs
+// one round trip instead of one per entry; when the server refuses exec, or
+// the path cannot be quoted for a shell, the SFTP tree walk finishes the job.
+func remoteQuickRemove(ctx context.Context, sshClient *ssh.Client, sftpClient *sftp.Client, target string) error {
+	if sshClient != nil {
+		err := runRemoteRM(ctx, sshClient, target)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, errRemoteRMUnavailable) {
+			return err
+		}
+	}
+	if sftpClient == nil {
+		return errors.New("SSH 连接不可用")
+	}
+	_, err := removeTree(ctx, true, sftpClient, target, nil)
+	return err
+}
+
+var errRemoteRMUnavailable = errors.New("remote rm unavailable")
+
+// runRemoteRM deletes target with the server's own rm -rf. The path is quoted
+// for a POSIX shell; 126/127 mean the shell could not run rm at all, which
+// leaves the SFTP walk as a fallback. Any other failure is rm's own and is
+// returned with its stderr, because the entry may be half gone.
+func runRemoteRM(ctx context.Context, client *ssh.Client, target string) error {
+	quoted, ok := shellQuote(target)
+	if !ok {
+		return errRemoteRMUnavailable
+	}
+
+	sess, err := client.NewSession()
+	if err != nil {
+		return errRemoteRMUnavailable
+	}
+	defer sess.Close()
+
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = sess.Signal(ssh.SIGKILL)
+			sess.Close()
+		case <-done:
+		}
+	}()
+
+	out, err := sess.CombinedOutput("rm -rf -- " + quoted)
+	close(done)
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err == nil {
+		return nil
+	}
+
+	var exit *ssh.ExitError
+	if errors.As(err, &exit) {
+		if code := exit.ExitStatus(); code == 126 || code == 127 {
+			return errRemoteRMUnavailable
+		}
+		if msg := strings.TrimSpace(string(out)); msg != "" {
+			return errors.New(msg)
+		}
+		return err
+	}
+	return errRemoteRMUnavailable
+}
+
+// shellQuote wraps s in single quotes for a POSIX shell. Control characters
+// that would let a path break the command line are refused, so the caller can
+// fall back to SFTP instead of risking a different target.
+func shellQuote(s string) (string, bool) {
+	if s == "" || strings.ContainsAny(s, "\x00\n\r") {
+		return "", false
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'", true
 }
 
 func (a *App) openPrompt(title, initial string, action func(string)) {

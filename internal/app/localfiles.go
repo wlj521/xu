@@ -199,15 +199,14 @@ func (a *App) localFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 				if row < 0 || row >= len(b.localEntries) {
 					return
 				}
-				f := b.localEntries[row]
 				cell := ui.Box(c).Fill().OnClick(func() {
-					a.clickLocalRow(b, row)
+					b.localSel = row
 				})
 				cell.ContextMenu(func(m *ui.Menu) {
 					b.localSel = row
 					a.fileContextMenu(m, b, false)
 				})
-				if !f.IsDir() && cell.DoubleClicked() {
+				if cell.DoubleClicked() {
 					b.localSel = row
 					a.openLocalSelected(b)
 					opened = true
@@ -235,7 +234,7 @@ func localCell(c *ui.Context, b *fileBrowser, row, col int) {
 	}
 	// Windows has no POSIX owner pairs; the mode bits still tell read-only
 	// from writable, which is what the 权限 column shows.
-	fileCell(c, b.localEntries[row], "—", col)
+	fileCell(c, b.localEntries[row], "—", col, b.localSel == row)
 }
 
 func bottomLocalCell(c *ui.Context, b *fileBrowser, row, col int) {
@@ -243,23 +242,13 @@ func bottomLocalCell(c *ui.Context, b *fileBrowser, row, col int) {
 		return
 	}
 	f := b.localEntries[row]
+	chosen := b.localSel == row
 	switch col {
 	case 0, 1:
-		fileCell(c, f, "—", col)
+		fileCell(c, f, "—", col, chosen)
 	case 2:
 		ui.Text(c, f.ModTime().Format("2006/01/02 15:04")).FontSize(10.2).
 			Font("Cascadia Code").TextColor(colMuted).NoWrap()
-	}
-}
-
-// clickLocalRow opens a folder on a single click, like the remote table.
-func (a *App) clickLocalRow(b *fileBrowser, row int) {
-	if row < 0 || row >= len(b.localEntries) {
-		return
-	}
-	b.localSel = row
-	if f := b.localEntries[row]; f.IsDir() {
-		a.navigateLocal(b, filepath.Join(b.localDir, f.Name()))
 	}
 }
 

@@ -84,11 +84,20 @@ func TestLocalDockMatchesRemoteLayout(t *testing.T) {
 		t.Fatalf("the current folder crumb %q is missing; texts = %q", segs[len(segs)-1], tt.Texts())
 	}
 
-	// A folder row opens on a single click, like the remote table.
-	if err := clickText(tt, "sub/"); err != nil {
-		t.Fatalf("click the folder row: %v", err)
+	// A folder row opens on a double click, like the remote table.
+	box, ok := tt.Find("sub/")
+	if !ok {
+		t.Fatalf("folder row missing; texts = %q", tt.Texts())
 	}
+	x, y := box.X+40, box.Y+box.H/2
+	tt.ClickAt(x, y)
+	tt.Frame()
+	if b.localDir == sub {
+		t.Fatal("a single click opened the folder")
+	}
+	tt.ClickAt(x, y)
+	tt.Frame()
 	if b.localDir != sub {
-		t.Fatalf("localDir = %q, want %q after clicking the folder", b.localDir, sub)
+		t.Fatalf("localDir = %q, want %q after double-clicking the folder", b.localDir, sub)
 	}
 }

@@ -11,7 +11,7 @@ import (
 
 // bottomFilesPane is the FinalShell-style file dock: a full-width breadcrumb
 // bar above a directory tree on the left and the remote file table on the
-// right. A single click on a folder row opens it.
+// right. A click chooses a row; a double click opens it.
 func (a *App) bottomFilesPane(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 	a.bottomFileContent(c, t, b)
 }
@@ -51,15 +51,14 @@ func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 				if row < 0 || row >= len(b.remoteEntries) {
 					return
 				}
-				f := b.remoteEntries[row]
 				cell := ui.Box(c).Fill().OnClick(func() {
-					a.clickRemoteRow(b, row)
+					b.remoteSel = row
 				})
 				cell.ContextMenu(func(m *ui.Menu) {
 					b.remoteSel = row
 					a.fileContextMenu(m, b, true)
 				})
-				if !f.IsDir() && cell.DoubleClicked() {
+				if cell.DoubleClicked() {
 					b.remoteSel = row
 					a.openRemoteSelected(b)
 					opened = true
@@ -78,7 +77,7 @@ func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			a.fileBackgroundMenu(m, b, true)
 		})
 		// Double clicks are also Submitted; the cell already opened the
-		// file, so only the keyboard's Enter opens it here.
+		// entry, so only the keyboard's Enter opens it here.
 		if table.Submitted() && !opened && !a.editorOpen {
 			a.openRemoteSelected(b)
 		}
@@ -90,17 +89,6 @@ func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 func (a *App) dockFileTableWide(c *ui.Context) bool {
 	w, _ := c.Size()
 	return w >= 1100
-}
-
-// clickRemoteRow opens a folder on a single click and just chooses a file.
-func (a *App) clickRemoteRow(b *fileBrowser, row int) {
-	if row < 0 || row >= len(b.remoteEntries) {
-		return
-	}
-	b.remoteSel = row
-	if f := b.remoteEntries[row]; f.IsDir() {
-		a.navigateRemote(b, path.Join(b.remoteDir, f.Name()))
-	}
 }
 
 func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {

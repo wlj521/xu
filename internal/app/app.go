@@ -124,6 +124,18 @@ type App struct {
 	chmodMode    [9]bool
 	chmodErr     string
 
+	// Delete confirmation, in the app's own dialog because a folder is
+	// removed with everything inside it: the prompt warns about that and
+	// then shows the progress of the running delete.
+	delOpen    bool
+	delTarget  *deleteTarget
+	delErr     string
+	delRunning bool
+	delRemoved int
+	delCurrent string
+	delID      int64
+	delCancel  context.CancelFunc
+
 	monitorOpen bool
 	monitors    map[int64]*monitorState
 	netIface    map[int64]string // chosen network interface per session ("" = all)
@@ -186,6 +198,15 @@ type App struct {
 	promptTitle  string
 	promptValue  string
 	promptAction func(string)
+
+	// New file/folder prompt, in the app's own dialog: the inline bar stays
+	// for renaming, while creating asks for a name over the file panel.
+	newEntryOpen    bool
+	newEntryBrowser *fileBrowser
+	newEntryRemote  bool
+	newEntryDir     bool
+	newEntryName    string
+	newEntryErr     string
 
 	transfer       *transferState
 	transferLog    []transferRecord
@@ -353,6 +374,12 @@ func (a *App) View(c *ui.Context) {
 		}
 		if a.chmodOpen {
 			a.chmodModal(c, t)
+		}
+		if a.delOpen {
+			a.deleteModal(c, t)
+		}
+		if a.newEntryOpen {
+			a.newEntryModal(c, t)
 		}
 		if settingsWasOpen && !a.settingsOpen {
 			a.saveSettings()
