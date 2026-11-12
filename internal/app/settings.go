@@ -193,7 +193,7 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 						ui.Image(c, titleIcon).Size(24, 24).Fit(ui.Contain).Shrink(0)
 						ui.Column(c).Grow(1).Gap(1).Children(func() {
-							ui.Text(c, "Xu 0.2.0").FontSize(9.2).Font("Cascadia Code").
+							ui.Text(c, "Xu 0.3.0").FontSize(9.2).Font("Cascadia Code").
 								TextColor(colText2)
 							ui.Text(c, "修改即时生效").FontSize(8.2).TextColor(colMuted2)
 						})
@@ -725,7 +725,7 @@ func (a *App) settingsAbout(c *ui.Context, t *ui.Theme) {
 		Background(colPanel2).Border(1, colLine).AlignItems(ui.Center).Children(func() {
 		ui.Image(c, titleIcon).Size(38, 38).Fit(ui.Contain).Shrink(0)
 		ui.Column(c).Grow(1).Gap(2).Children(func() {
-			ui.Text(c, "Xu 0.2.0").FontSize(14.5).FontWeight(650).TextColor(colText)
+			ui.Text(c, "Xu 0.3.0").FontSize(14.5).FontWeight(650).TextColor(colText)
 			ui.Text(c, "SSH Workspace · mygo + Ghostty VT").FontSize(10.5).
 				Font("Cascadia Code").TextColor(colMuted)
 		})
