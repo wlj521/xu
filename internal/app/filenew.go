@@ -10,8 +10,7 @@ import (
 )
 
 // New file and folder creation ask in the app's own dialog over the file
-// panel, as the delete question does. The inline bar stays for renaming,
-// where the old name is already there to edit.
+// panel, as renaming and deleting do.
 
 func (a *App) promptNewFile(b *fileBrowser, remote bool) { a.openNewEntry(b, remote, false) }
 
@@ -23,9 +22,8 @@ func (a *App) openNewEntry(b *fileBrowser, remote, dir bool) {
 		return
 	}
 
-	// One prompt at a time: creating replaces the inline rename bar.
-	a.promptOpen = false
-	a.promptAction = nil
+	// One dialog at a time: creating replaces a rename in progress.
+	a.closeRename()
 	a.fileErr = ""
 	a.newEntryOpen = true
 	a.newEntryBrowser = b

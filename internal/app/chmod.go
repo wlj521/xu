@@ -49,8 +49,7 @@ func (a *App) openChmodDialog(b *fileBrowser, remote bool) {
 		return
 	}
 
-	a.promptOpen = false
-	a.promptAction = nil
+	a.closeRename()
 	a.fileErr = ""
 	a.chmodOpen = true
 	a.chmodBrowser = b

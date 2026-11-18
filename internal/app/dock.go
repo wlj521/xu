@@ -163,9 +163,6 @@ func (a *App) dockFilesPanel(c *ui.Context, t *ui.Theme) {
 	}
 
 	ui.Column(c).Grow(1).FillHeight().Padding(0, 0, 6, 0).Gap(4).Children(func() {
-		if a.promptOpen {
-			a.promptBar(c)
-		}
 		if a.fileErr != "" {
 			ui.Text(c, shortLabel(a.fileErr, 120)).FontSize(9).TextColor(colRed).NoWrap()
 		}

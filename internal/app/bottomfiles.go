@@ -17,7 +17,15 @@ func (a *App) bottomFilesPane(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 }
 
 func (a *App) bottomFileContent(c *ui.Context, t *ui.Theme, b *fileBrowser) {
-	ui.Column(c).FillWidth().FillHeight().Children(func() {
+	pane := ui.Column(c).FillWidth().FillHeight()
+	if paths := pane.DroppedFiles(); len(paths) > 0 {
+		a.uploadDropped(b, paths)
+	}
+	over := pane.FileDragOver()
+	pane.Children(func() {
+		if over {
+			a.uploadDropHint(c, b)
+		}
 		a.bottomPathBar(c, t, b)
 
 		if a.transfer != nil {
@@ -33,6 +41,19 @@ func (a *App) bottomFileContent(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			a.bottomFileTable(c, t, b)
 		}).Grow(1).FillWidth().SplitReset(260)
 	})
+}
+
+// uploadDropHint tells the user where a drop will land, and that folders keep
+// their tree as they are uploaded.
+func (a *App) uploadDropHint(c *ui.Context, b *fileBrowser) {
+	ui.Row(c).Height(28).Shrink(0).Padding(0, 12).Gap(8).AlignItems(ui.Center).
+		Background(colCyan.Alpha(0.12)).BorderWidth(0, 0, 1, 0).BorderColor(colCyan.Alpha(0.3)).
+		Children(func() {
+			iconEl(c, iconUpload, 13, colCyan)
+			ui.Text(c, "松开鼠标，上传到 "+shortenMiddle(b.remoteDir, 48)).
+				FontSize(9.3).TextColor(colText).NoWrap()
+			ui.Text(c, "文件夹会保留目录结构").FontSize(9).TextColor(colMuted2).NoWrap()
+		})
 }
 
 func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
@@ -58,6 +79,15 @@ func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 					b.remoteSel = row
 					a.fileContextMenu(m, b, true)
 				})
+				if b.remoteEntries[row].IsDir() {
+					dir := path.Join(b.remoteDir, b.remoteEntries[row].Name())
+					if paths := cell.DroppedFiles(); len(paths) > 0 {
+						a.uploadPathsTo(b, paths, dir)
+					}
+					if cell.FileDragOver() {
+						cell.Background(colCyan.Alpha(0.14))
+					}
+				}
 				if cell.DoubleClicked() {
 					b.remoteSel = row
 					a.openRemoteSelected(b)
@@ -153,7 +183,7 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			if m.Item("新建文件夹").Chosen() {
 				a.promptMkdir(b, true)
 			}
-			if m.Item("重命名").Chosen() {
+			if m.Item("重命名…").Chosen() {
 				a.promptRename(b, true)
 			}
 			if m.Item("删除").Chosen() {
@@ -162,6 +192,9 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			m.Separator()
 			if m.Item("上传文件…").Chosen() {
 				a.uploadViaDialog(b)
+			}
+			if m.Item("上传文件夹…").Chosen() {
+				a.uploadFolderViaDialog(b)
 			}
 			if m.Item("下载所选").Chosen() {
 				a.downloadSelected(b)
@@ -322,6 +355,14 @@ func (a *App) dirTreeRow(c *ui.Context, t *ui.Theme, b *fileBrowser, dir string,
 			row.Background(colCyan.Alpha(0.08))
 		} else if row.Hovered() {
 			row.Background(t.SurfaceHover)
+		}
+		if !local {
+			if paths := row.DroppedFiles(); len(paths) > 0 {
+				a.uploadPathsTo(b, paths, dir)
+			}
+			if row.FileDragOver() {
+				row.Background(colCyan.Alpha(0.16)).Border(1, colCyan.Alpha(0.45))
+			}
 		}
 		row.Children(func() {
 			iconEl(c, iconFolder, 17, condColor(active, colCyan, colMuted))

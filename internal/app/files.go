@@ -200,20 +200,6 @@ func (a *App) ensureFileBrowser(ts *termSession) (*fileBrowser, error) {
 	return b, nil
 }
 
-func (a *App) promptBar(c *ui.Context) {
-	ui.Row(c).Padding(4, 12).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, a.promptTitle)
-		ui.TextInput(c, &a.promptValue).Grow(1)
-		if ui.PrimaryButton(c, "确定").Clicked() {
-			a.submitPrompt()
-		}
-		if ui.Button(c, "取消").Clicked() {
-			a.promptOpen = false
-			a.promptAction = nil
-		}
-	})
-}
-
 func (a *App) transferBar(c *ui.Context, t *ui.Theme) {
 	tr := a.transfer
 	if tr == nil {
@@ -300,7 +286,7 @@ func (a *App) fileContextMenu(m *ui.Menu, b *fileBrowser, remote bool) {
 	}
 	if f != nil {
 		m.Separator()
-		if m.Item("重命名").Chosen() {
+		if m.Item("重命名…").Chosen() {
 			a.promptRename(b, remote)
 		}
 		if remote && m.Item("修改权限…").Chosen() {
@@ -333,8 +319,13 @@ func (a *App) fileBackgroundMenu(m *ui.Menu, b *fileBrowser, remote bool) {
 		a.promptMkdir(b, remote)
 	}
 	m.Separator()
-	if remote && m.Item("上传文件…").Chosen() {
-		a.uploadViaDialog(b)
+	if remote {
+		if m.Item("上传文件…").Chosen() {
+			a.uploadViaDialog(b)
+		}
+		if m.Item("上传文件夹…").Chosen() {
+			a.uploadFolderViaDialog(b)
+		}
 	}
 	if m.Item("刷新").Chosen() {
 		if remote {
@@ -371,57 +362,6 @@ func (a *App) transferTray(c *ui.Context, t *ui.Theme) {
 			}
 		})
 		barFill(c, float64(pct)/100, colCyan, 4)
-	})
-}
-
-func (a *App) uploadDropped(b *fileBrowser, paths []string) {
-	if a.transfer != nil {
-		a.fileErr = "已有传输在进行，请等待或取消"
-		return
-	}
-
-	type item struct {
-		local string
-		size  int64
-	}
-	var items []item
-	var total int64
-	for _, p := range paths {
-		st, err := os.Stat(p)
-		if err != nil {
-			a.fileErr = "读取拖入文件失败: " + err.Error()
-			continue
-		}
-		if st.IsDir() {
-			a.fileErr = "暂不支持拖拽目录上传"
-			continue
-		}
-		items = append(items, item{local: p, size: st.Size()})
-		total += st.Size()
-	}
-	if len(items) == 0 {
-		return
-	}
-
-	a.startTransfer(fmt.Sprintf("上传 %d 个文件", len(items)), func(ctx context.Context, report func(int64, int64)) error {
-		var done int64
-		for _, it := range items {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			remote := path.Join(b.remoteDir, filepath.Base(it.local))
-			base := done
-			if err := uploadFile(ctx, b.client, it.local, remote, func(d, _ int64) {
-				report(base+d, total)
-			}); err != nil {
-				return err
-			}
-			done += it.size
-			report(done, total)
-		}
-		return nil
-	}, func() {
-		b.loadRemote()
 	})
 }
 
@@ -839,31 +779,12 @@ func (a *App) openRemoteSelected(b *fileBrowser) {
 }
 
 func (a *App) uploadSelected(b *fileBrowser) {
-	if b.client == nil {
-		a.fileErr = "需要 SSH 连接才能上传"
-		return
-	}
-	if a.transfer != nil {
-		a.fileErr = "已有传输在进行，请等待或取消"
-		return
-	}
 	f := selectedEntry(b.localEntries, b.localSel)
 	if f == nil {
-		a.fileErr = "请先在左侧选择文件"
+		a.fileErr = "请先在左侧选择文件或文件夹"
 		return
 	}
-	if f.IsDir() {
-		a.fileErr = "暂不支持目录上传"
-		return
-	}
-
-	local := filepath.Join(b.localDir, f.Name())
-	remote := path.Join(b.remoteDir, f.Name())
-	a.startTransfer("上传 "+f.Name(), func(ctx context.Context, report func(int64, int64)) error {
-		return uploadFile(ctx, b.client, local, remote, report)
-	}, func() {
-		b.loadRemote()
-	})
+	a.uploadPaths(b, []string{filepath.Join(b.localDir, f.Name())})
 }
 
 func (a *App) downloadSelected(b *fileBrowser) {
@@ -1077,42 +998,6 @@ func copyWithProgress(ctx context.Context, dst io.Writer, src io.Reader, total i
 	}
 }
 
-func (a *App) promptRename(b *fileBrowser, remote bool) {
-	var f os.FileInfo
-	if remote {
-		f = selectedEntry(b.remoteEntries, b.remoteSel)
-	} else {
-		f = selectedEntry(b.localEntries, b.localSel)
-	}
-	if f == nil {
-		a.fileErr = "请先选择一个文件"
-		return
-	}
-
-	oldName := f.Name()
-	a.openPrompt("重命名为", oldName, func(name string) {
-		if !validName(name) || name == oldName {
-			a.fileErr = "名称无效或未改变"
-			return
-		}
-		var err error
-		if remote {
-			err = b.client.Rename(path.Join(b.remoteDir, oldName), path.Join(b.remoteDir, name))
-		} else {
-			err = os.Rename(filepath.Join(b.localDir, oldName), filepath.Join(b.localDir, name))
-		}
-		if err != nil {
-			a.fileErr = "重命名失败: " + err.Error()
-			return
-		}
-		if remote {
-			b.loadRemote()
-		} else {
-			b.loadLocal()
-		}
-	})
-}
-
 func (a *App) quickRemoveSelected(b *fileBrowser, remote bool) {
 	var f os.FileInfo
 	if remote {
@@ -1257,23 +1142,6 @@ func shellQuote(s string) (string, bool) {
 		return "", false
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'", true
-}
-
-func (a *App) openPrompt(title, initial string, action func(string)) {
-	a.promptOpen = true
-	a.promptTitle = title
-	a.promptValue = initial
-	a.promptAction = action
-}
-
-func (a *App) submitPrompt() {
-	value := strings.TrimSpace(a.promptValue)
-	action := a.promptAction
-	a.promptOpen = false
-	a.promptAction = nil
-	if action != nil {
-		action(value)
-	}
 }
 
 func sortEntries(list []os.FileInfo) {

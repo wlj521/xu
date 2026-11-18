@@ -56,9 +56,8 @@ func (a *App) deleteSelected(b *fileBrowser, remote bool) {
 		dir = b.remoteDir
 	}
 
-	// One prompt at a time: a delete question replaces the inline prompt bar.
-	a.promptOpen = false
-	a.promptAction = nil
+	// One dialog at a time: a delete question replaces a rename in progress.
+	a.closeRename()
 	a.delTarget = &deleteTarget{
 		browser: b,
 		remote:  remote,

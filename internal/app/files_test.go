@@ -593,8 +593,8 @@ func TestFileRowContextMenu(t *testing.T) {
 	tt.RightClickAt(box.X+40, box.Y+box.H/2)
 	menu := tt.Menu()
 	want := map[string]bool{
-		"新建文件": false, "新建文件夹": false, "删除": false, "下载到本机": false,
-		"修改权限…": false, "快速删除（rm）": false,
+		"新建文件": false, "新建文件夹": false, "重命名…": false, "删除": false,
+		"下载到本机": false, "修改权限…": false, "快速删除（rm）": false,
 	}
 	for _, item := range menu {
 		if _, ok := want[item]; ok {
@@ -605,22 +605,6 @@ func TestFileRowContextMenu(t *testing.T) {
 		if !found {
 			t.Fatalf("context menu %q missing %q", menu, item)
 		}
-	}
-}
-
-func TestFilePromptShownOnce(t *testing.T) {
-	a, _, tt := newRemoteDockApp(t)
-	a.openPrompt("修改权限测试", "644", nil)
-	tt.Frame()
-
-	count := 0
-	for _, text := range tt.Texts() {
-		if text == "修改权限测试" {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Fatalf("file prompt shown %d times, want once", count)
 	}
 }
 

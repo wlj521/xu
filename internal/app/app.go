@@ -124,6 +124,17 @@ type App struct {
 	chmodMode    [9]bool
 	chmodErr     string
 
+	// Rename asks for the new name in the app's own dialog over the file
+	// panel, rather than in a bar above the listing.
+	renameOpen    bool
+	renameBrowser *fileBrowser
+	renameRemote  bool
+	renameOld     string
+	renameName    string
+	renameIsDir   bool
+	renameErr     string
+	renamePick    bool
+
 	// Delete confirmation, in the app's own dialog because a folder is
 	// removed with everything inside it: the prompt warns about that and
 	// then shows the progress of the running delete.
@@ -194,13 +205,7 @@ type App struct {
 	commandInput   string
 	commandHistory []string
 
-	promptOpen   bool
-	promptTitle  string
-	promptValue  string
-	promptAction func(string)
-
-	// New file/folder prompt, in the app's own dialog: the inline bar stays
-	// for renaming, while creating asks for a name over the file panel.
+	// New file/folder prompt, in the app's own dialog over the file panel.
 	newEntryOpen    bool
 	newEntryBrowser *fileBrowser
 	newEntryRemote  bool
@@ -374,6 +379,9 @@ func (a *App) View(c *ui.Context) {
 		}
 		if a.chmodOpen {
 			a.chmodModal(c, t)
+		}
+		if a.renameOpen {
+			a.renameModal(c, t)
 		}
 		if a.delOpen {
 			a.deleteModal(c, t)
