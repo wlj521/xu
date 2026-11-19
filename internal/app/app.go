@@ -114,8 +114,12 @@ type App struct {
 	fileSplitPct float32
 	browsers     map[int64]*fileBrowser
 	fileErr      string
-	editorOpen   bool
-	editor       *editorSession
+
+	// The file editor is a floating window with one tab per file. Sessions
+	// stay open while the user opens more files from the dock behind it.
+	editorSessions []*editorSession
+	editorIndex    int
+	nextEditorID   int64
 
 	chmodOpen    bool
 	chmodBrowser *fileBrowser
@@ -299,7 +303,7 @@ func (a *App) Close() {
 		a.stopMonitor(id)
 	}
 	a.closeAllForwards()
-	a.discardEditor()
+	a.discardAllEditors()
 	for _, b := range a.browsers {
 		b.Close()
 	}
@@ -354,6 +358,9 @@ func (a *App) View(c *ui.Context) {
 			}
 			a.shellMain(c, t)
 		})
+		if len(a.editorSessions) > 0 {
+			a.editorWindow(c, t)
+		}
 		if a.formOpen {
 			if !a.hostKeyOpen {
 				a.connectModal(c, t)
@@ -713,10 +720,6 @@ func (a *App) editProfile(p store.Profile) {
 		a.status = "正在连接，请稍候"
 		return
 	}
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
-		return
-	}
 	if a.finding {
 		a.closeFind()
 	}
@@ -752,10 +755,6 @@ func (a *App) connectSavedProfile(p store.Profile) {
 	// A saved server opens a new tab every time: several shells on one host
 	// are useful (and FinalShell behaves this way), so an existing session
 	// never steals the click.
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
-		return
-	}
 	if a.finding {
 		a.closeFind()
 	}
@@ -924,9 +923,7 @@ func (a *App) closeTermSession(ts *termSession) {
 	if ts == nil {
 		return
 	}
-	if a.editor != nil && a.editor.termID == ts.ID {
-		a.discardEditor()
-	}
+	a.discardEditorsForTerm(ts.ID)
 	a.stopMonitor(ts.ID)
 	a.stopForwards(ts.ID)
 	delete(a.netIface, ts.ID)

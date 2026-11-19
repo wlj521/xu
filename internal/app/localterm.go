@@ -84,10 +84,6 @@ func newLocalTerminal(post func(func()), onSearch func(int64, terminal.SearchSta
 
 // OpenLocalTerminal activates the running local shell, or opens one.
 func (a *App) OpenLocalTerminal() {
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
-		return
-	}
 	a.pickerOpen = false
 
 	for i, ts := range a.terms {

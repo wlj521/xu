@@ -154,10 +154,6 @@ func (a *App) activeTerminal() *termSession {
 }
 
 func (a *App) openFiles() {
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
-		return
-	}
 	if a.finding {
 		a.closeFind()
 	}

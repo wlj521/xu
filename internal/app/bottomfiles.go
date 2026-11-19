@@ -108,7 +108,7 @@ func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 		})
 		// Double clicks are also Submitted; the cell already opened the
 		// entry, so only the keyboard's Enter opens it here.
-		if table.Submitted() && !opened && !a.editorOpen {
+		if table.Submitted() && !opened {
 			a.openRemoteSelected(b)
 		}
 	})
@@ -152,12 +152,6 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			})
 		}
 
-		up := paneIconButton(c, t, "bf-act-up", iconFolderUp, "返回上一级")
-		up.Disabled(b.remoteDir == "/")
-		if up.Clicked() {
-			a.navigateRemote(b, path.Dir(b.remoteDir))
-		}
-
 		ui.Text(c, fmt.Sprintf("%d 项", len(b.remoteEntries))).FontSize(9.2).
 			Font("Cascadia Code").TextColor(colMuted2).NoWrap()
 
@@ -166,8 +160,10 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 		if paneIconButton(c, t, "bf-act-refresh", iconRefresh, "刷新").Clicked() {
 			b.loadRemote()
 		}
-		if paneIconButton(c, t, "bf-act-new", iconNewFolder, "新建文件夹").Clicked() {
-			a.promptMkdir(b, true)
+		up := paneIconButton(c, t, "bf-act-up", iconArrowUp, "返回上一级")
+		up.Disabled(b.remoteDir == "/")
+		if up.Clicked() {
+			a.navigateRemote(b, path.Dir(b.remoteDir))
 		}
 		if paneIconButton(c, t, "bf-act-upload", iconUpload, "上传文件").Clicked() {
 			a.uploadViaDialog(b)

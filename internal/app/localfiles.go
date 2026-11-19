@@ -9,7 +9,7 @@ import (
 )
 
 // localPathBar is the local dock's breadcrumb bar: the same shape as the
-// remote one (crumbs, path editor, up, count, actions), so both panes read
+// remote one (crumbs, path editor, count, actions), so both panes read
 // the same at a glance.
 func (a *App) localPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 	b.syncLocalPathEdit(c)
@@ -35,13 +35,6 @@ func (a *App) localPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			})
 		}
 
-		parent := filepath.Dir(b.localDir)
-		up := paneIconButton(c, t, "lf-act-up", iconFolderUp, "返回上一级")
-		up.Disabled(parent == b.localDir)
-		if up.Clicked() {
-			a.navigateLocal(b, parent)
-		}
-
 		ui.Text(c, fmt.Sprintf("%d 项", len(b.localEntries))).FontSize(9.2).
 			Font("Cascadia Code").TextColor(colMuted2).NoWrap()
 
@@ -50,8 +43,11 @@ func (a *App) localPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 		if paneIconButton(c, t, "lf-act-refresh", iconRefresh, "刷新").Clicked() {
 			b.loadLocal()
 		}
-		if paneIconButton(c, t, "lf-act-new", iconNewFolder, "新建文件夹").Clicked() {
-			a.promptMkdir(b, false)
+		parent := filepath.Dir(b.localDir)
+		up := paneIconButton(c, t, "lf-act-up", iconArrowUp, "返回上一级")
+		up.Disabled(parent == b.localDir)
+		if up.Clicked() {
+			a.navigateLocal(b, parent)
 		}
 		if paneIconButton(c, t, "lf-act-upload", iconUpload, "上传文件").Clicked() {
 			a.uploadSelected(b)
@@ -222,7 +218,7 @@ func (a *App) localFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			table.Grow(1)
 		})
 		table.ContextMenu(func(m *ui.Menu) { a.fileBackgroundMenu(m, b, false) })
-		if table.Submitted() && !opened && !a.editorOpen {
+		if table.Submitted() && !opened {
 			a.openLocalSelected(b)
 		}
 	})

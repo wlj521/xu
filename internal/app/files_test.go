@@ -143,8 +143,18 @@ func TestFileToolbarUpNavigatesToParent(t *testing.T) {
 	if !ok {
 		t.Fatalf("item count missing; texts = %q", tt.Texts())
 	}
-	if up.X > count.X {
-		t.Fatalf("up button at %.1f is not before count at %.1f", up.X, count.X)
+	refresh, ok := tt.Find("刷新")
+	if !ok {
+		t.Fatalf("refresh button missing; texts = %q", tt.Texts())
+	}
+	if refresh.X > up.X {
+		t.Fatalf("refresh button at %.1f is not before up at %.1f", refresh.X, up.X)
+	}
+	if count.X > refresh.X {
+		t.Fatalf("item count at %.1f is not before refresh at %.1f", count.X, refresh.X)
+	}
+	if _, ok := tt.Find("新建文件夹"); ok {
+		t.Fatalf("new folder action must not be in the toolbar; texts = %q", tt.Texts())
 	}
 	if err := tt.Click("返回上一级"); err != nil {
 		t.Fatalf("up button: %v", err)

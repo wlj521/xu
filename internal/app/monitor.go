@@ -19,10 +19,6 @@ type monitorState struct {
 }
 
 func (a *App) openMonitor() {
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
-		return
-	}
 	ts := a.activeTerminal()
 	if ts == nil {
 		a.status = "请先打开一个终端"

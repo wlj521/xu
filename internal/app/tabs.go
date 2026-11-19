@@ -80,10 +80,6 @@ func (a *App) openTermTab(term *termSession) {
 
 // openQuickTab appends a quick-connect page and puts it in front.
 func (a *App) openQuickTab() {
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
-		return
-	}
 	if a.finding {
 		a.closeFind()
 	}
@@ -105,10 +101,6 @@ func (a *App) openQuickTab() {
 // session that leaves the front.
 func (a *App) activateTabIndex(i int) {
 	if i < 0 || i >= len(a.tabs) {
-		return
-	}
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
 		return
 	}
 	if a.finding {
@@ -545,9 +537,7 @@ func (a *App) disconnectSession(ts *termSession) {
 		a.status = "标签已断开"
 		return
 	}
-	if a.editor != nil && a.editor.termID == ts.ID {
-		a.discardEditor()
-	}
+	a.discardEditorsForTerm(ts.ID)
 	a.stopMonitor(ts.ID)
 	a.stopForwards(ts.ID)
 	if b := a.browsers[ts.ID]; b != nil {

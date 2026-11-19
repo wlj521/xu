@@ -94,9 +94,7 @@ func (a *App) reconnect(ts *termSession) {
 			a.forwardOpen = false
 			a.batchOpen = false
 
-			if a.editor != nil && a.editor.termID == ts.ID {
-				a.discardEditor()
-			}
+			a.discardEditorsForTerm(ts.ID)
 			a.stopMonitor(ts.ID)
 			a.stopForwards(ts.ID)
 			if b := a.browsers[ts.ID]; b != nil {

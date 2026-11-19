@@ -84,10 +84,6 @@ func (a *App) schemeTheme(name string) (*terminal.Theme, bool) {
 }
 
 func (a *App) openSettings() {
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
-		return
-	}
 	if a.finding {
 		a.closeFind()
 	}

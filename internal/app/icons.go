@@ -44,7 +44,6 @@ var (
 	iconUpload       = svgIcon(`<path d="M12 16V4m0 0L7 9m5-5 5 5M4 16v3.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V16"/>`)
 	iconDownload     = svgIcon(`<path d="M12 4v12m0 0 5-5m-5 5-5-5M4 16v3.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V16"/>`)
 	iconNewFolder    = svgIcon(`<path d="M3.5 7.5h6l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 19V7.5Z"/><path d="M12 12v5M9.5 14.5h5"/>`)
-	iconFolderUp     = svgIcon(`<path d="M3.5 7.5h6l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 19V7.5Z"/><path d="M12 17v-5m0 0-2.2 2.2M12 12l2.2 2.2"/>`)
 	iconChevron      = svgIcon(`<path d="m6 9 6 6 6-6"/>`)
 	iconChevronRight = svgIcon(`<path d="m9 6 6 6-6 6"/>`)
 	iconChevronLeft  = svgIcon(`<path d="m15 6-6 6 6 6"/>`)

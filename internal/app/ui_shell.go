@@ -10,10 +10,6 @@ import (
 )
 
 func (a *App) openConnectForm() {
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
-		return
-	}
 	if a.connecting {
 		a.status = "正在连接，请稍候"
 		return
@@ -32,10 +28,6 @@ func (a *App) openConnectForm() {
 }
 
 func (a *App) openConnectionManager() {
-	if a.editorOpen {
-		a.status = "请先保存或关闭编辑器"
-		return
-	}
 	if a.finding {
 		a.closeFind()
 	}
@@ -59,8 +51,6 @@ func (a *App) shellMain(c *ui.Context, t *ui.Theme) {
 			a.connectingTabView(c, t, a.activeTabRef())
 		case a.quickTabActive():
 			a.quickConnectView(c, t)
-		case a.editorOpen:
-			a.editorView(c, t)
 		case len(a.terms) == 0:
 			a.shellWelcome(c, t)
 		default:
