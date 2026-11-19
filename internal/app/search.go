@@ -9,6 +9,7 @@ func (a *App) openFind() {
 	if a.activeTerminal() == nil {
 		return
 	}
+	a.quickCmdOpen = false
 	a.finding = true
 	a.resetFind()
 }

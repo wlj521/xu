@@ -38,6 +38,19 @@ type App struct {
 	searchOpen  bool
 	searchQuery string
 
+	// Global and per-server commands that paste into the active terminal.
+	quickCommands     []store.QuickCommand
+	quickCmdOpen      bool
+	quickCmdEditOpen  bool
+	quickCmdID        int64
+	quickCmdProfileID int64
+	quickCmdScope     int
+	quickCmdName      string
+	quickCmdCommand   string
+	quickCmdErr       string
+	quickCmdAnchor    ui.Element
+	quickCmdAnchorSet bool
+
 	monitorCollapsed bool // left-hand server monitor collapsed to its rail
 	formOpen         bool
 	pickerOpen       bool
@@ -273,6 +286,7 @@ func (a *App) SetStore(st *store.Store) {
 	a.applyLogHighlight()
 	a.refreshGroups()
 	a.refreshProfiles()
+	a.loadQuickCommands()
 
 	hosts, err := st.KnownHosts(a.ctx)
 	if err != nil {
@@ -361,6 +375,9 @@ func (a *App) View(c *ui.Context) {
 		if len(a.editorSessions) > 0 {
 			a.editorWindow(c, t)
 		}
+		if a.quickCmdOpen && a.quickCmdAnchorSet {
+			a.quickCommandPopover(c, t)
+		}
 		if a.formOpen {
 			if !a.hostKeyOpen {
 				a.connectModal(c, t)
@@ -395,6 +412,9 @@ func (a *App) View(c *ui.Context) {
 		}
 		if a.newEntryOpen {
 			a.newEntryModal(c, t)
+		}
+		if a.quickCmdEditOpen {
+			a.quickCommandModal(c, t)
 		}
 		if settingsWasOpen && !a.settingsOpen {
 			a.saveSettings()
@@ -876,6 +896,7 @@ func (a *App) removeProfile(p store.Profile) {
 		a.managerSel = 0
 	}
 	a.refreshProfiles()
+	a.loadQuickCommands()
 	a.managerErr = ""
 	a.status = "已删除连接 " + name
 }

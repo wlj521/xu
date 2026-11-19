@@ -85,6 +85,7 @@ type termSession struct {
 	closing      bool
 	reconnecting bool
 	reconnectErr string
+	focusRequest bool
 }
 
 type termDisplay struct {
@@ -148,7 +149,12 @@ func terminalView(c *ui.Context, ts *termSession) {
 	if ts.Term == nil {
 		return
 	}
-	terminal.View(c, ts.Term).Grow(1).FillWidth().AutoFocus()
+	view := terminal.View(c, ts.Term)
+	if ts.focusRequest {
+		view.Focus()
+		ts.focusRequest = false
+	}
+	view.Grow(1).FillWidth().AutoFocus()
 }
 
 func (t *termSession) Close() {

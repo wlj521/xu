@@ -37,6 +37,15 @@ type ForwardRule struct {
 	AutoStart bool
 }
 
+// QuickCommand is a command the user can paste into a terminal. ProfileID 0
+// makes it global; otherwise it belongs to one saved connection.
+type QuickCommand struct {
+	ID        int64
+	ProfileID int64
+	Name      string
+	Command   string
+}
+
 type Store struct {
 	db *sqlite.DB
 }
@@ -107,6 +116,18 @@ var migrations = [][]string{
 			created_at INTEGER NOT NULL
 		)`,
 		`ALTER TABLE profiles ADD COLUMN group_id INTEGER NOT NULL DEFAULT 0`,
+	},
+	{
+		`CREATE TABLE IF NOT EXISTS quick_commands (
+			id         INTEGER PRIMARY KEY,
+			profile_id INTEGER NOT NULL DEFAULT 0,
+			name       TEXT NOT NULL,
+			command    TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			UNIQUE(profile_id, name)
+		)`,
+		`CREATE INDEX IF NOT EXISTS quick_commands_profile ON quick_commands(profile_id, id)`,
 	},
 }
 
@@ -224,8 +245,54 @@ func (s *Store) DeleteGroup(ctx context.Context, id int64) error {
 func (s *Store) DeleteProfile(ctx context.Context, id int64) error {
 	_, err := s.db.Transaction(ctx, []sqlite.Statement{
 		{SQL: `DELETE FROM port_forwards WHERE profile_id = ?`, Args: []any{id}},
+		{SQL: `DELETE FROM quick_commands WHERE profile_id = ?`, Args: []any{id}},
 		{SQL: `DELETE FROM profiles WHERE id = ?`, Args: []any{id}},
 	})
+	return err
+}
+
+func (s *Store) QuickCommands(ctx context.Context) ([]QuickCommand, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT id, profile_id, name, command
+		FROM quick_commands ORDER BY profile_id, id`)
+	if err != nil {
+		return nil, err
+	}
+
+	idx := columns(rows.Columns)
+	out := make([]QuickCommand, 0, len(rows.Values))
+	for _, v := range rows.Values {
+		out = append(out, QuickCommand{
+			ID:        asInt64(v[idx["id"]]),
+			ProfileID: asInt64(v[idx["profile_id"]]),
+			Name:      asString(v[idx["name"]]),
+			Command:   asString(v[idx["command"]]),
+		})
+	}
+	return out, nil
+}
+
+func (s *Store) SaveQuickCommand(ctx context.Context, q *QuickCommand) error {
+	now := time.Now().Unix()
+	if q.ID != 0 {
+		_, err := s.db.Execute(ctx, `
+			UPDATE quick_commands SET profile_id = ?, name = ?, command = ?, updated_at = ?
+			WHERE id = ?`, q.ProfileID, q.Name, q.Command, now, q.ID)
+		return err
+	}
+
+	res, err := s.db.Execute(ctx, `
+		INSERT INTO quick_commands (profile_id, name, command, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)`, q.ProfileID, q.Name, q.Command, now, now)
+	if err != nil {
+		return err
+	}
+	q.ID = res.LastInsertID
+	return nil
+}
+
+func (s *Store) DeleteQuickCommand(ctx context.Context, id int64) error {
+	_, err := s.db.Execute(ctx, `DELETE FROM quick_commands WHERE id = ?`, id)
 	return err
 }
 

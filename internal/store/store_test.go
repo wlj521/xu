@@ -190,3 +190,77 @@ func TestProfilesAndKnownHosts(t *testing.T) {
 		t.Fatalf("forwards after profile delete = %+v", rules)
 	}
 }
+
+func TestQuickCommandsCRUD(t *testing.T) {
+	mygo.App.SetPath(mygo.PathUserData, t.TempDir())
+	t.Cleanup(func() { mygo.App.SetPath(mygo.PathUserData, "") })
+
+	ctx := context.Background()
+	st, err := Open(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	p := Profile{Name: "jt808", Host: "127.0.0.1", Port: 22, Username: "root"}
+	if err := st.SaveProfile(ctx, &p); err != nil {
+		t.Fatal(err)
+	}
+
+	global := QuickCommand{Name: "uptime", Command: "uptime"}
+	server := QuickCommand{
+		ProfileID: p.ID,
+		Name:      "进入项目",
+		Command:   "cd /projects/jt808",
+	}
+	for _, q := range []*QuickCommand{&global, &server} {
+		if err := st.SaveQuickCommand(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+		if q.ID == 0 {
+			t.Fatalf("quick command %q got no ID", q.Name)
+		}
+	}
+
+	list, err := st.QuickCommands(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].ProfileID != 0 || list[1].ProfileID != p.ID {
+		t.Fatalf("quick commands = %+v", list)
+	}
+
+	global.Command = "uptime -p"
+	if err := st.SaveQuickCommand(ctx, &global); err != nil {
+		t.Fatal(err)
+	}
+	list, err = st.QuickCommands(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].Command != "uptime -p" {
+		t.Fatalf("updated quick commands = %+v", list)
+	}
+
+	if err := st.DeleteQuickCommand(ctx, global.ID); err != nil {
+		t.Fatal(err)
+	}
+	list, err = st.QuickCommands(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Name != "进入项目" {
+		t.Fatalf("quick commands after delete = %+v", list)
+	}
+
+	if err := st.DeleteProfile(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	list, err = st.QuickCommands(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("quick commands after profile delete = %+v", list)
+	}
+}

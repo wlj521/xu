@@ -80,6 +80,7 @@ func (a *App) openTermTab(term *termSession) {
 
 // openQuickTab appends a quick-connect page and puts it in front.
 func (a *App) openQuickTab() {
+	a.quickCmdOpen = false
 	if a.finding {
 		a.closeFind()
 	}
@@ -103,6 +104,7 @@ func (a *App) activateTabIndex(i int) {
 	if i < 0 || i >= len(a.tabs) {
 		return
 	}
+	a.quickCmdOpen = false
 	if a.finding {
 		a.closeFind()
 	}
@@ -654,6 +656,10 @@ func (a *App) tabStrip(c *ui.Context, t *ui.Theme) {
 	a.syncTabs()
 	ts := a.activeTerminal()
 	quick := a.quickTabActive()
+	a.quickCmdAnchorSet = false
+	if ts == nil {
+		a.quickCmdOpen = false
+	}
 
 	ui.Row(c).Height(tabStripHeight).Shrink(0).Padding(0, 10).Gap(4).AlignItems(ui.Center).
 		Background(colPanelTop).BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
@@ -775,14 +781,24 @@ func (a *App) tabStrip(c *ui.Context, t *ui.Theme) {
 		}
 		if ts != nil {
 			ui.Box(c).Width(1).Height(14).Background(colLine).MarginX(4)
+			quickCmd := a.sessionAction(c, t, "ts-quick-commands", iconCommand,
+				"快捷命令", a.quickCmdOpen, false)
+			a.quickCmdAnchor = quickCmd
+			a.quickCmdAnchorSet = true
+			if quickCmd.Clicked() {
+				a.toggleQuickCommands()
+			}
 			if a.finding {
 				if a.sessionAction(c, t, "ts-search", iconSearch, "查找（Ctrl Shift F）", true, false).Clicked() {
+					a.quickCmdOpen = false
 					a.closeFind()
 				}
 			} else if a.sessionAction(c, t, "ts-search", iconSearch, "查找（Ctrl Shift F）", false, false).Clicked() {
+				a.quickCmdOpen = false
 				a.openFind()
 			}
 			if a.sessionAction(c, t, "ts-clear", iconEraser, "清屏", false, false).Clicked() {
+				a.quickCmdOpen = false
 				a.clearTerminal(ts)
 			}
 		}

@@ -56,10 +56,13 @@ func TestLocalTerminalHidesBottomDock(t *testing.T) {
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
 
-	for _, unwanted := range []string{"文件名", "notes.txt", "传输", "隧道", "命令"} {
+	for _, unwanted := range []string{"文件名", "notes.txt", "传输", "隧道"} {
 		if tt.HasText(unwanted) {
 			t.Fatalf("local terminal shows bottom dock content %q; texts = %q", unwanted, tt.Texts())
 		}
+	}
+	if _, ok := tt.Find("命令"); ok {
+		t.Fatalf("local terminal shows the bottom dock command tab; texts = %q", tt.Texts())
 	}
 	if !tt.HasText("本地终端") {
 		t.Fatalf("local terminal is missing; texts = %q", tt.Texts())
