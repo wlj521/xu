@@ -51,6 +51,9 @@ type fileBrowser struct {
 	remoteSel       int
 	remoteErr       string
 	remoteState     ui.ListState
+	// quickDel keeps one rm per browser in flight, so repeated clicks cannot
+	// post overlapping refreshes or delete a path twice.
+	quickDel bool
 
 	// Remote tree used by the bottom dock. Children are loaded lazily and
 	// cached per directory; treeOpen remembers which branches are expanded.
@@ -1028,30 +1031,49 @@ func (a *App) quickRemoveSelected(b *fileBrowser, remote bool) {
 		a.fileErr = "SSH 连接不可用"
 		return
 	}
-	target := path.Join(b.remoteDir, f.Name())
-
-	// A file is done in one command; a folder can take a while even on the
-	// server, so its rm runs off the UI thread and the status line reports it.
-	if !f.IsDir() {
-		if err := remoteQuickRemove(a.ctx, b.ssh, b.client, target); err != nil {
-			a.fileErr = "删除失败: " + err.Error()
-			return
-		}
-		a.status = "已删除 " + f.Name()
-		b.loadRemote()
+	if b.quickDel {
+		a.fileErr = "已有快速删除在进行，请稍候"
 		return
 	}
-
+	target := path.Join(b.remoteDir, f.Name())
+	name := f.Name()
 	sshClient, client := b.ssh, b.client
+
+	// Never run the SSH command from a menu callback: network latency would
+	// stop the window's event loop, and a slow or malformed reply can then
+	// take the native UI down with it. Every remote quick delete runs behind
+	// the frame, files included.
+	b.quickDel = true
 	a.fileErr = ""
-	a.status = "正在删除 " + f.Name() + "…"
+	a.status = "正在删除 " + name + "…"
 	go func() {
-		err := remoteQuickRemove(a.ctx, sshClient, client, target)
+		var err error
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logPanic("quick-remove", recovered)
+					err = fmt.Errorf("内部错误: %v", recovered)
+				}
+			}()
+			err = remoteQuickRemove(a.ctx, sshClient, client, target)
+		}()
 		a.post(func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logPanic("quick-remove-ui", recovered)
+					b.quickDel = false
+					a.status = ""
+					a.fileErr = "删除后刷新失败，已记录日志"
+				}
+			}()
+			if a.browsers == nil || a.browsers[b.termID] != b {
+				return
+			}
+			b.quickDel = false
 			b.loadRemote()
 			switch {
 			case err == nil:
-				a.status = "已删除 " + f.Name()
+				a.status = "已删除 " + name
 			case errors.Is(err, context.Canceled):
 				a.status = "已停止删除"
 			default:
@@ -1090,6 +1112,9 @@ var errRemoteRMUnavailable = errors.New("remote rm unavailable")
 // leaves the SFTP walk as a fallback. Any other failure is rm's own and is
 // returned with its stderr, because the entry may be half gone.
 func runRemoteRM(ctx context.Context, client *ssh.Client, target string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	quoted, ok := shellQuote(target)
 	if !ok {
 		return errRemoteRMUnavailable
@@ -1101,18 +1126,7 @@ func runRemoteRM(ctx context.Context, client *ssh.Client, target string) error {
 	}
 	defer sess.Close()
 
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = sess.Signal(ssh.SIGKILL)
-			sess.Close()
-		case <-done:
-		}
-	}()
-
 	out, err := sess.CombinedOutput("rm -rf -- " + quoted)
-	close(done)
 
 	if ctx.Err() != nil {
 		return ctx.Err()
