@@ -571,6 +571,84 @@ func TestNewEntryDialogRejectsBadName(t *testing.T) {
 	}
 }
 
+func TestRenameDialogRenamesLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "old.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, b, tt := newEntryApp(t, dir)
+	b.loadLocal()
+	b.localSel = 0
+
+	a.promptRename(b, false)
+	tt.Frame()
+	for _, want := range []string{"重命名文件", "本机磁盘", "old.txt", "取消", "重命名"} {
+		if !tt.HasText(want) {
+			t.Fatalf("rename dialog is missing %q; texts = %q", want, tt.Texts())
+		}
+	}
+
+	tt.Type("new.txt")
+	tt.Frame()
+	if a.renameName != "new.txt" {
+		t.Fatalf("typing should replace the selected old name, got %q", a.renameName)
+	}
+	if err := clickText(tt, "重命名"); err != nil {
+		t.Fatalf("rename button: %v", err)
+	}
+	tt.Frame()
+
+	if a.renameOpen {
+		t.Fatal("the dialog stayed open after renaming")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "new.txt")); err != nil {
+		t.Fatalf("renamed file missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "old.txt")); !os.IsNotExist(err) {
+		t.Fatalf("old file still exists or stat failed: %v", err)
+	}
+}
+
+func TestBuildUploadPlanKeepsFolderTree(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src")
+	if err := os.MkdirAll(filepath.Join(src, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(src, "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "top.txt"), []byte("abc"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "nested", "deep.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := buildUploadPlan([]string{src}, "/srv/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.total != 8 {
+		t.Fatalf("total = %d, want 8", plan.total)
+	}
+	found := make(map[string]bool)
+	for _, item := range plan.items {
+		found[item.remote] = true
+	}
+	for _, want := range []string{
+		"/srv/app/src",
+		"/srv/app/src/empty",
+		"/srv/app/src/nested",
+		"/srv/app/src/nested/deep.txt",
+		"/srv/app/src/top.txt",
+	} {
+		if !found[want] {
+			t.Errorf("upload plan missing %q; got %v", want, found)
+		}
+	}
+}
+
 func TestFileRowContextMenu(t *testing.T) {
 	a := New()
 	a.terms = []*termSession{{ID: 1, Title: "root@test", profile: sshx.Profile{Host: "test", Port: 22, Username: "root"}}}
