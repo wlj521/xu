@@ -67,21 +67,26 @@ func (a *App) startConnectToTab(p store.Profile, tab *appTab, origin int64) {
 	}
 
 	a.applyProfile(p)
+	sp, err := a.sshProfileForSaved(p)
+	tab.kind = tabConnecting
+	tab.term = nil
+	if err != nil {
+		tab.conn = &connectingTab{profile: p, err: err.Error(), origin: origin}
+		a.connecting = false
+		a.connectingProfileID = 0
+		a.connTabID = 0
+		a.connectErr = err.Error()
+		a.status = "连接失败: " + err.Error()
+		return
+	}
+
 	a.connecting = true
 	a.connectingProfileID = p.ID
 	a.pendingQuickTab = 0
 	a.connectErr = ""
 	a.status = "正在连接 " + profileDisplayName(p) + "…"
 
-	sp := sshx.Profile{
-		Host:     p.Host,
-		Port:     p.Port,
-		Username: p.Username,
-		Password: a.effectivePassword(),
-	}
 	ctx, cancel := context.WithCancel(a.ctx)
-	tab.kind = tabConnecting
-	tab.term = nil
 	tab.conn = &connectingTab{profile: p, cancel: cancel, origin: origin}
 
 	a.startConnectTimer(tab.id)
@@ -155,6 +160,8 @@ func (a *App) stopConnectTimer() {
 
 func connectPhaseLabel(ph sshx.Phase) string {
 	switch ph {
+	case sshx.PhaseJump:
+		return "正在连接跳板机"
 	case sshx.PhaseTCP:
 		return "正在建立 TCP 连接"
 	case sshx.PhaseKeyExchange:
@@ -162,7 +169,7 @@ func connectPhaseLabel(ph sshx.Phase) string {
 	case sshx.PhaseHostKey:
 		return "等待确认主机密钥"
 	case sshx.PhaseAuth:
-		return "正在验证账号与密码"
+		return "正在验证账号与身份"
 	case sshx.PhaseSession:
 		return "正在打开终端会话"
 	}
@@ -196,6 +203,10 @@ func (a *App) connectingTabView(c *ui.Context, t *ui.Theme, tab *appTab) {
 			Font("Cascadia Code").FontWeight(600).TextColor(colText).NoWrap()
 		ui.Text(c, hostLine).FontSize(9.8).Font("Cascadia Code").
 			TextColor(colMuted).NoWrap()
+		if conn.profile.JumpProfileID != 0 {
+			ui.Text(c, "经由跳板机 "+a.jumpDisplayName(conn.profile.JumpProfileID)).
+				FontSize(9.2).Font("Cascadia Code").TextColor(colMuted2).NoWrap()
+		}
 
 		if conn.err != "" {
 			a.connectingTabError(c, t, tab, conn)

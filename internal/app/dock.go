@@ -37,10 +37,7 @@ func (a *App) dockShellExpanded(c *ui.Context, t *ui.Theme) {
 
 func (a *App) dockHead(c *ui.Context, t *ui.Theme) {
 	ts := a.activeTerminal()
-	transferCount := len(a.transferLog)
-	if a.transfer != nil {
-		transferCount++
-	}
+	transferCount := len(a.transferTasks)
 	tunnelCount := 0
 	if ts != nil {
 		tunnelCount = len(a.forwards[ts.ID])
@@ -243,84 +240,124 @@ func (a *App) toggleDock() {
 	}
 }
 
-func (a *App) addTransferLog(rec transferRecord) {
-	a.transferLog = append([]transferRecord{rec}, a.transferLog...)
-	if len(a.transferLog) > 12 {
-		a.transferLog = a.transferLog[:12]
-	}
-}
-
 func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 	ui.Scroll(c).Grow(1).Padding(10).Children(func() {
-		ui.Column(c).Gap(7).Children(func() {
-			if a.transfer == nil && len(a.transferLog) == 0 {
+		ui.Column(c).Gap(9).Children(func() {
+			if len(a.transferTasks) == 0 && len(a.transferLog) == 0 {
 				ui.Column(c).FillWidth().Padding(20, 12).Center().Gap(6).Children(func() {
 					iconEl(c, iconUpload, 22, colMuted2)
 					ui.Text(c, "暂无传输任务").FontSize(11).TextColor(colMuted)
-					ui.Text(c, "在文件面板里上传或下载文件，进度会显示在这里").FontSize(9.5).TextColor(colMuted2)
+					ui.Text(c, "在文件面板里上传或下载文件，任务会进入队列").FontSize(9.5).TextColor(colMuted2)
 				})
 				return
 			}
 
-			ui.Row(c).AlignItems(ui.Center).Children(func() {
+			active, queued, _, _ := a.transferQueueStats()
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "传输队列").FontSize(10).FontWeight(600).TextColor(colMuted)
+				miniTag(c, fmt.Sprintf("%d 运行 · %d 等待", active, queued), condColor(active > 0, colCyan, colMuted2))
 				ui.Text(c, "").Grow(1)
-				if len(a.transferLog) > 0 && quietAction(c, t, "transfer-clear", "清空记录", nil, false).Clicked() {
-					a.transferLog = nil
-				}
 			})
 
-			if a.transfer != nil {
-				tr := a.transfer
+			if len(a.transferTasks) == 0 {
+				ui.Text(c, "当前没有等待或运行中的任务").FontSize(9.5).TextColor(colMuted2)
+			}
+			for _, task := range a.transferTasks {
+				task := task
 				pct := 0
-				if tr.total > 0 {
-					pct = int(tr.done * 100 / tr.total)
+				if task.total > 0 {
+					pct = int(task.done * 100 / task.total)
+				}
+				status := "等待中"
+				statusColor := colMuted
+				if task.status == transferRunning {
+					status = "传输中"
+					statusColor = colCyan
 				}
 				ui.Box(c).FillWidth().Padding(9, 10).Radius(7).Background(colPanel2.Alpha(0.55)).
 					Border(1, colLine).Children(func() {
 					ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
-						iconEl(c, transferIcon(tr.label), 13, colCyan)
+						iconEl(c, transferIcon(task.label), 13, statusColor)
 						ui.Column(c).Grow(1).Gap(4).Children(func() {
 							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, shortLabel(tr.label, 42)).FontSize(10).TextColor(colText).NoWrap()
+								ui.Text(c, shortLabel(task.label, 42)).FontSize(10).TextColor(colText).NoWrap()
 								ui.Text(c, "").Grow(1)
-								ui.Text(c, fmt.Sprintf("%d%%", pct)).FontSize(9).Font("Cascadia Code").TextColor(colCyan)
+								ui.Text(c, fmt.Sprintf("%s · %d%%", status, pct)).FontSize(9).
+									Font("Cascadia Code").TextColor(statusColor)
 							})
-							if tr.target != "" {
-								ui.Text(c, "保存到 "+shortLabel(tr.target, 86)).FontSize(8.3).
+							if task.target != "" {
+								ui.Text(c, transferTargetLabel(task.kind, shortLabel(task.target, 86))).FontSize(8.3).
 									Font("Cascadia Code").TextColor(colMuted2).NoWrap()
 							}
 							ui.Progress(c, float64(pct)/100).FillWidth().Height(3)
 						})
-						if ghostAction(c, t, "transfer-cancel", "取消", nil).Clicked() && tr.cancel != nil {
-							tr.cancel()
+						label := "暂停"
+						if task.status == transferQueued {
+							label = "移除"
+						}
+						if ghostAction(c, t, fmt.Sprintf("transfer-cancel-%d", task.id), label, nil).Clicked() {
+							a.cancelTransfer(task.id)
 						}
 					})
 				})
 			}
 
+			if len(a.transferLog) == 0 {
+				return
+			}
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "历史记录").FontSize(10).FontWeight(600).TextColor(colMuted)
+				ui.Text(c, "最近 7 天").FontSize(8.5).TextColor(colMuted2)
+				ui.Text(c, "").Grow(1)
+				if quietAction(c, t, "transfer-clear", "清空记录", nil, false).Clicked() {
+					a.clearTransferHistory()
+				}
+			})
 			for i, rec := range a.transferLog {
 				rec := rec
-				ui.Row(c).MinHeight(30).Gap(9).AlignItems(ui.Center).Children(func() {
-					iconEl(c, transferIcon(rec.Label), 12, condColor(rec.Err == "", colGreen, colRed))
+				status := "完成"
+				color := colGreen
+				switch rec.Status {
+				case transferCanceled:
+					status = "已取消"
+					if rec.retry != nil {
+						status = "已暂停"
+					}
+					color = colMuted
+				case transferFailed:
+					status = "失败"
+					color = colRed
+				}
+				ui.Row(c).MinHeight(32).Gap(9).AlignItems(ui.Center).Children(func() {
+					iconEl(c, transferIcon(rec.Label), 12, color)
 					ui.Column(c).Grow(1).Gap(1).Children(func() {
 						ui.Text(c, shortLabel(rec.Label, 44)).FontSize(9.5).TextColor(colMuted).NoWrap()
 						if rec.Target != "" {
-							ui.Text(c, "保存到 "+shortLabel(rec.Target, 86)).FontSize(8.2).
+							ui.Text(c, transferTargetLabel(rec.Kind, shortLabel(rec.Target, 86))).FontSize(8.2).
 								Font("Cascadia Code").TextColor(colMuted2).NoWrap()
+						}
+						if rec.Err != "" {
+							ui.Text(c, shortLabel(rec.Err, 80)).FontSize(8.2).TextColor(colRed).NoWrap()
 						}
 					})
 					if rec.Total > 0 {
 						ui.Text(c, humanSize(rec.Done)+" / "+humanSize(rec.Total)).FontSize(8.5).
 							Font("Cascadia Code").TextColor(colMuted2).NoWrap()
 					}
-					status := "完成"
-					if rec.Canceled {
-						status = "已取消"
-					} else if rec.Err != "" {
-						status = "失败"
+					if !rec.CreatedAt.IsZero() {
+						ui.Text(c, rec.CreatedAt.Format("01-02 15:04")).FontSize(8.2).
+							Font("Cascadia Code").TextColor(colMuted2).NoWrap()
 					}
-					ui.Text(c, status).FontSize(8.5).TextColor(condColor(rec.Err == "", colGreen, colRed)).NoWrap()
+					ui.Text(c, status).FontSize(8.5).TextColor(color).NoWrap()
+					if rec.retry != nil {
+						label := "重试"
+						if rec.Status == transferCanceled {
+							label = "继续"
+						}
+						if ghostAction(c, t, fmt.Sprintf("transfer-retry-%d", i), label, iconRefresh).Clicked() {
+							a.retryTransfer(i)
+						}
+					}
 					_ = i
 				})
 			}

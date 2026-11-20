@@ -14,7 +14,6 @@ import (
 
 	"xu/internal/sshx"
 	"xu/internal/store"
-	"xu/internal/vault"
 )
 
 type batchChoice struct {
@@ -237,8 +236,9 @@ func (a *App) runBatch() {
 	}
 
 	type job struct {
-		profile  store.Profile
-		password string
+		profile store.Profile
+		ssh     sshx.Profile
+		err     error
 	}
 
 	jobs := make([]job, 0, len(selected))
@@ -248,8 +248,11 @@ func (a *App) runBatch() {
 		if !ok {
 			continue
 		}
-		pw, _ := vault.Get(p.ID, "password")
-		jobs = append(jobs, job{profile: p, password: pw})
+		sp, err := a.sshProfileForSaved(p)
+		if err != nil {
+			sp = sshx.Profile{}
+		}
+		jobs = append(jobs, job{profile: p, ssh: sp, err: err})
 		a.batchResults = append(a.batchResults, batchResult{
 			profileID: p.ID,
 			name:      p.Name,
@@ -287,7 +290,7 @@ func (a *App) runBatch() {
 					}
 				})
 
-				out, err := a.runBatchOne(ctx, j.profile, j.password, cmd)
+				out, err := a.runBatchOne(ctx, j.ssh, j.err, cmd)
 
 				a.post(func() {
 					if i >= len(a.batchResults) {
@@ -312,12 +315,9 @@ func (a *App) runBatch() {
 	}()
 }
 
-func (a *App) runBatchOne(ctx context.Context, p store.Profile, password, cmd string) (string, error) {
-	sp := sshx.Profile{
-		Host:     p.Host,
-		Port:     p.Port,
-		Username: p.Username,
-		Password: password,
+func (a *App) runBatchOne(ctx context.Context, sp sshx.Profile, setupErr error, cmd string) (string, error) {
+	if setupErr != nil {
+		return "", setupErr
 	}
 
 	client, err := sshx.Dial(ctx, sp, a.trustHost)

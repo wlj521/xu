@@ -35,7 +35,7 @@ func TestConnectingTabShowsPhaseAndTarget(t *testing.T) {
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
 	for _, want := range []string{
-		"正在连接 alpha", "root@example.com:22", "正在验证账号与密码", "连接中",
+		"正在连接 alpha", "root@example.com:22", "正在验证账号与身份", "连接中",
 		"连接成功后在这里显示 CPU、内存、磁盘与网络",
 	} {
 		if !tt.HasText(want) {

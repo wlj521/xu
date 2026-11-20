@@ -34,6 +34,14 @@ func TestSettingsViewRenders(t *testing.T) {
 			t.Fatalf("terminal settings missing %q; texts = %q", want, tt.Texts())
 		}
 	}
+
+	a.settingsSection = 3
+	tt.Frame()
+	for _, want := range []string{"并发任务", "同名文件", "历史保留", "最近 7 天"} {
+		if !tt.HasText(want) {
+			t.Fatalf("connection settings missing %q; texts = %q", want, tt.Texts())
+		}
+	}
 }
 
 func TestSaveSettingsInMemory(t *testing.T) {
@@ -44,6 +52,8 @@ func TestSaveSettingsInMemory(t *testing.T) {
 	a.settingsFontSize = "16"
 	a.settingsScrollback = "20"
 	a.settings.Theme = 1
+	a.transferLimitPick = "3 个"
+	a.transferConflictPick = "跳过"
 	a.saveSettings()
 
 	if a.settingsErr != "" {
@@ -51,6 +61,9 @@ func TestSaveSettingsInMemory(t *testing.T) {
 	}
 	if a.settings.FontSize != 16 || a.settings.ScrollbackMB != 20 || a.settings.Theme != 1 {
 		t.Fatalf("settings = %+v", a.settings)
+	}
+	if a.settings.TransferConcurrency != 3 || a.settings.TransferConflict != int(transferConflictSkip) {
+		t.Fatalf("transfer settings = %+v", a.settings)
 	}
 
 	d := a.termDisplay()

@@ -292,6 +292,11 @@ func (a *App) connectionPageDetail(c *ui.Context, t *ui.Theme) {
 				a.connFact(c, t, "主机", p.Host, true)
 				a.connFact(c, t, "端口", fmt.Sprintf("%d", p.Port), true)
 				a.connFact(c, t, "用户名", p.Username, true)
+				jump := "直连"
+				if p.JumpProfileID != 0 {
+					jump = a.jumpDisplayName(p.JumpProfileID)
+				}
+				a.connFact(c, t, "跳板机", jump, false)
 				a.connFact(c, t, "认证方式", authLabel(p.AuthType), false)
 				a.connFact(c, t, "状态", statusLabel, false)
 			})

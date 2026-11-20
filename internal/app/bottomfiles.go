@@ -28,7 +28,7 @@ func (a *App) bottomFileContent(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 		}
 		a.bottomPathBar(c, t, b)
 
-		if a.transfer != nil {
+		if a.hasTransfers() {
 			a.transferBar(c, t)
 		}
 		if b.remoteErr != "" {

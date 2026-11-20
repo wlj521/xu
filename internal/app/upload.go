@@ -28,10 +28,6 @@ func (a *App) uploadFolderViaDialog(b *fileBrowser) {
 		a.fileErr = "需要 SSH 连接才能上传"
 		return
 	}
-	if a.transfer != nil {
-		a.fileErr = "已有传输在进行，请等待或取消"
-		return
-	}
 
 	dirs, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 		Parent:      a.win,
@@ -62,10 +58,6 @@ func (a *App) uploadPathsTo(b *fileBrowser, paths []string, remoteDir string) {
 		a.fileErr = "需要 SSH 连接才能上传"
 		return
 	}
-	if a.transfer != nil {
-		a.fileErr = "已有传输在进行，请等待或取消"
-		return
-	}
 	paths = compactUploadPaths(paths)
 	if len(paths) == 0 {
 		return
@@ -83,36 +75,71 @@ func (a *App) uploadPathsTo(b *fileBrowser, paths []string, remoteDir string) {
 	}
 
 	a.fileErr = ""
-	a.startTransfer(label, func(ctx context.Context, report func(int64, int64)) error {
-		plan, err := buildUploadPlan(paths, remoteDir)
-		if err != nil {
-			return err
-		}
-		report(0, plan.total)
-
-		var done int64
-		for _, item := range plan.items {
-			if err := ctx.Err(); err != nil {
+	conflict := a.transferConflictPolicy()
+	state := newTransferResumeState()
+	factory := func() func(context.Context, func(int64, int64)) error {
+		return func(ctx context.Context, report func(int64, int64)) error {
+			plan, err := buildUploadPlan(paths, remoteDir)
+			if err != nil {
 				return err
 			}
-			if item.dir {
-				if err := b.client.MkdirAll(item.remote); err != nil {
-					return fmt.Errorf("创建远端目录 %s: %w", item.remote, err)
-				}
-				continue
-			}
 
-			base := done
-			if err := uploadFile(ctx, b.client, item.local, item.remote, func(n, _ int64) {
-				report(base+n, plan.total)
-			}); err != nil {
-				return fmt.Errorf("上传 %s: %w", filepath.Base(item.local), err)
+			var done int64
+			for _, item := range plan.items {
+				if !item.dir && state.done(item.remote) {
+					done += item.size
+				}
 			}
-			done += item.size
 			report(done, plan.total)
+
+			for _, item := range plan.items {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if item.dir {
+					if err := b.client.MkdirAll(item.remote); err != nil {
+						return fmt.Errorf("创建远端目录 %s: %w", item.remote, err)
+					}
+					continue
+				}
+				if state.done(item.remote) {
+					continue
+				}
+
+				target := state.target("upload:"+item.remote, func() string {
+					if !remotePathExists(b.client, item.remote) {
+						return item.remote
+					}
+					switch conflict {
+					case transferConflictSkip:
+						return ""
+					case transferConflictRename:
+						return uniqueRemotePath(b.client, item.remote)
+					default:
+						return item.remote
+					}
+				})
+				if target == "" {
+					state.complete(item.remote)
+					done += item.size
+					report(done, plan.total)
+					continue
+				}
+
+				base := done
+				if err := uploadFileResume(ctx, b.client, item.local, target, func(n, _ int64) {
+					report(base+n, plan.total)
+				}); err != nil {
+					return fmt.Errorf("上传 %s: %w", filepath.Base(item.local), err)
+				}
+				state.complete(item.remote)
+				done += item.size
+				report(done, plan.total)
+			}
+			return nil
 		}
-		return nil
-	}, func() {
+	}
+	a.enqueueTransferFactory(transferUpload, label, remoteDir, b.termID, factory, func() {
 		b.loadRemote()
 	})
 }

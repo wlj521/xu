@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo"
 )
@@ -262,5 +263,112 @@ func TestQuickCommandsCRUD(t *testing.T) {
 	}
 	if len(list) != 0 {
 		t.Fatalf("quick commands after profile delete = %+v", list)
+	}
+}
+
+func TestJumpProfilePersistsAndClearsOnDelete(t *testing.T) {
+	mygo.App.SetPath(mygo.PathUserData, t.TempDir())
+	t.Cleanup(func() { mygo.App.SetPath(mygo.PathUserData, "") })
+
+	ctx := context.Background()
+	st, err := Open(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	jump := Profile{Name: "bastion", Host: "10.0.0.1", Port: 22, Username: "ops", AuthType: "agent"}
+	if err := st.SaveProfile(ctx, &jump); err != nil {
+		t.Fatal(err)
+	}
+	target := Profile{
+		Name:          "private-db",
+		Host:          "10.1.0.8",
+		Port:          22,
+		Username:      "deploy",
+		AuthType:      "key",
+		JumpProfileID: jump.ID,
+	}
+	if err := st.SaveProfile(ctx, &target); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := st.Profiles(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("profiles = %+v", list)
+	}
+	var got Profile
+	for _, p := range list {
+		if p.ID == target.ID {
+			got = p
+		}
+	}
+	if got.JumpProfileID != jump.ID {
+		t.Fatalf("jump profile = %d, want %d", got.JumpProfileID, jump.ID)
+	}
+
+	if err := st.DeleteProfile(ctx, jump.ID); err != nil {
+		t.Fatal(err)
+	}
+	list, err = st.Profiles(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].JumpProfileID != 0 {
+		t.Fatalf("profile after jump delete = %+v", list)
+	}
+}
+
+func TestTransferHistoryPersists(t *testing.T) {
+	mygo.App.SetPath(mygo.PathUserData, t.TempDir())
+	t.Cleanup(func() { mygo.App.SetPath(mygo.PathUserData, "") })
+
+	ctx := context.Background()
+	st, err := Open(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	for _, rec := range []TransferRecord{
+		{Kind: "upload", Label: "上传 a.txt", Target: "/tmp/a.txt", Done: 10, Total: 10, Status: "done"},
+		{Kind: "download", Label: "下载 b.log", Target: "C:\\tmp\\b.log", Done: 4, Total: 8, Status: "failed", Err: "network"},
+	} {
+		rec := rec
+		if err := st.AddTransferRecord(ctx, &rec); err != nil {
+			t.Fatal(err)
+		}
+		if rec.ID == 0 {
+			t.Fatal("transfer record got no ID")
+		}
+	}
+	old := TransferRecord{
+		Kind: "upload", Label: "过期记录", Status: "done",
+		CreatedAt: time.Now().Add(-8 * 24 * time.Hour).Unix(),
+	}
+	if err := st.AddTransferRecord(ctx, &old); err != nil {
+		t.Fatal(err)
+	}
+
+	history, err := st.TransferHistory(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 || history[0].Status != "failed" || history[1].Label != "上传 a.txt" {
+		t.Fatalf("history = %+v", history)
+	}
+
+	if err := st.ClearTransferHistory(ctx); err != nil {
+		t.Fatal(err)
+	}
+	history, err = st.TransferHistory(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("history after clear = %+v", history)
 	}
 }

@@ -17,25 +17,28 @@ import (
 const githubURL = "https://github.com/wlj521/xu"
 
 type appSettings struct {
-	FontFamily     string
-	FontSize       int
-	ScrollbackMB   int
-	Theme          int         // 0 follows the system, 1 dark, 2 light
-	Accent         int         // 0 blue, 1 mint, 2 violet, 3 orange, 4 rose, 5 emerald, 6 gold, 7 indigo
-	TerminalScheme string      // Ghostty scheme name; empty follows the app theme
-	CopyOnSelect   bool        // selection copies to the clipboard
-	FindHighlight  bool        // terminal search highlights matches
-	AutoReconnect  bool        // reconnects dropped sessions
-	LogHighlight   bool        // colorize log lines in SSH terminals
-	LogAnchorOnly  bool        // only colorize lines that look like logs
-	LogRules       []logRule   // log highlighting rules, in priority order
-	LogFormats     []logFormat // user-defined ways to recognize a log line
+	FontFamily          string
+	FontSize            int
+	ScrollbackMB        int
+	Theme               int         // 0 follows the system, 1 dark, 2 light
+	Accent              int         // 0 blue, 1 mint, 2 violet, 3 orange, 4 rose, 5 emerald, 6 gold, 7 indigo
+	TerminalScheme      string      // Ghostty scheme name; empty follows the app theme
+	CopyOnSelect        bool        // selection copies to the clipboard
+	FindHighlight       bool        // terminal search highlights matches
+	AutoReconnect       bool        // reconnects dropped sessions
+	TransferConcurrency int         // concurrent transfer tasks
+	TransferConflict    int         // 0 overwrite, 1 skip, 2 rename
+	LogHighlight        bool        // colorize log lines in SSH terminals
+	LogAnchorOnly       bool        // only colorize lines that look like logs
+	LogRules            []logRule   // log highlighting rules, in priority order
+	LogFormats          []logFormat // user-defined ways to recognize a log line
 }
 
 func defaultSettings() appSettings {
 	return appSettings{
 		FontSize: 13, ScrollbackMB: 10, Theme: 1,
 		Accent: defaultAccent, CopyOnSelect: true, FindHighlight: true, AutoReconnect: true,
+		TransferConcurrency: 2, TransferConflict: int(transferConflictOverwrite),
 		LogHighlight: true, LogAnchorOnly: true, LogRules: defaultLogRules(),
 	}
 }
@@ -714,6 +717,16 @@ func (a *App) settingsConnection(c *ui.Context, t *ui.Theme) {
 		settingsKV(c, "主机密钥", "首次核对 · 变化阻断")
 		settingsNote(c, iconShield, "私钥从 ~/.xu/keys 读取：id_ed25519、id_ecdsa、id_rsa。")
 	})
+
+	settingsGroup(c, "文件传输", false, func() {
+		settingsRow(c, "并发任务", "同时执行的传输任务数量；更高的并发会占用更多带宽。", func() {
+			ui.Select(c, &a.transferLimitPick, transferConcurrencyOptions()).Width(110)
+		})
+		settingsRow(c, "同名文件", "目录上传或下载遇到相同文件时使用该策略。", func() {
+			ui.Select(c, &a.transferConflictPick, []string{"覆盖", "跳过", "重命名"}).Width(110)
+		})
+		settingsKV(c, "历史保留", "最近 7 天")
+	})
 }
 
 func (a *App) settingsAbout(c *ui.Context, t *ui.Theme) {
@@ -924,12 +937,24 @@ func (a *App) loadSettings() {
 	if values["connection.auto_reconnect"] == "0" {
 		a.settings.AutoReconnect = false
 	}
+	if v := values["transfer.concurrency"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 4 {
+			a.settings.TransferConcurrency = n
+		}
+	}
+	if v := values["transfer.conflict"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 2 {
+			a.settings.TransferConflict = n
+		}
+	}
 
 	a.settingsFontSize = strconv.Itoa(a.settings.FontSize)
 	a.settingsScrollback = strconv.Itoa(a.settings.ScrollbackMB)
 	a.settingsFontSizeF = float64(a.settings.FontSize)
 	a.settingsScrollPick = fmt.Sprintf("%d MB", a.settings.ScrollbackMB)
 	a.settingsFontPick = fontChoiceForFamily(a.settings.FontFamily)
+	a.transferLimitPick = transferConcurrencyLabel(a.settings.TransferConcurrency)
+	a.transferConflictPick = transferConflictLabel(transferConflict(a.settings.TransferConflict))
 }
 
 func (a *App) saveSettings() {
@@ -947,6 +972,8 @@ func (a *App) saveSettings() {
 	a.settings.FontFamily = strings.TrimSpace(a.settings.FontFamily)
 	a.settings.FontSize = size
 	a.settings.ScrollbackMB = scroll
+	a.settings.TransferConcurrency = transferConcurrencyValue(a.transferLimitPick)
+	a.settings.TransferConflict = int(transferConflictValue(a.transferConflictPick))
 
 	if a.store != nil {
 		values := map[string]string{
@@ -960,6 +987,8 @@ func (a *App) saveSettings() {
 			"terminal.copy_on_select":   boolText(a.settings.CopyOnSelect),
 			"terminal.find_highlight":   boolText(a.settings.FindHighlight),
 			"connection.auto_reconnect": boolText(a.settings.AutoReconnect),
+			"transfer.concurrency":      strconv.Itoa(a.settings.TransferConcurrency),
+			"transfer.conflict":         strconv.Itoa(a.settings.TransferConflict),
 		}
 		for key, value := range values {
 			if err := a.store.SetSetting(a.ctx, key, value); err != nil {
@@ -975,6 +1004,7 @@ func (a *App) saveSettings() {
 	a.settingsErr = ""
 	a.applyTermSettings()
 	a.ApplyThemeSource()
+	a.pumpTransfers()
 }
 
 func boolText(v bool) string {

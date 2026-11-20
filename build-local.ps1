@@ -7,6 +7,16 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+$root = [System.IO.Path]::GetFullPath($PSScriptRoot)
+$buildDir = [System.IO.Path]::GetFullPath((Join-Path $root "build"))
+$buildPrefix = $buildDir.TrimEnd("\") + "\"
+$runningFromBuild = @(Get-Process Xu -ErrorAction SilentlyContinue | Where-Object {
+    $_.Path -and [System.IO.Path]::GetFullPath($_.Path).StartsWith($buildPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+})
+if ($runningFromBuild.Count -gt 0) {
+    throw "检测到 Xu 正在从 build 目录运行。请先手动退出它再重新打包；本脚本不会结束任何 Xu 进程。"
+}
+
 # Keep Go's temporary build files inside the trusted project folder.
 $env:GOTMPDIR = Join-Path $PSScriptRoot ".gotmp"
 New-Item -ItemType Directory -Force $env:GOTMPDIR | Out-Null
@@ -24,9 +34,6 @@ if (-not $env:MYGO_UPDATER_PRIVATE_KEY) {
         $env:MYGO_UPDATER_PRIVATE_KEY = (Get-Content $updateKey -Raw).Trim()
     }
 }
-
-Get-Process Xu -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Milliseconds 300
 
 # First pass: produce the two native DLLs in build\windows-amd64.
 $env:GOFLAGS = ""

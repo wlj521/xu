@@ -214,7 +214,7 @@ func TestTransferLogShowsDownloadPath(t *testing.T) {
 	a.bottomFiles = true
 	a.bottomFileTab = int(dockTransfers)
 	a.transferLog = []transferRecord{{
-		Label: "下载 consumer.sh", Target: `C:\Downloads\consumer.sh`, Done: 375, Total: 375,
+		Kind: transferDownload, Label: "下载 consumer.sh", Target: `C:\Downloads\consumer.sh`, Done: 375, Total: 375,
 	}}
 
 	tt := ui.NewTester(a.View, 1440, 900)

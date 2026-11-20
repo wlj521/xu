@@ -14,13 +14,14 @@ import (
 )
 
 type Profile struct {
-	ID       int64
-	Name     string
-	Host     string
-	Port     int
-	Username string
-	AuthType string
-	GroupID  int64
+	ID            int64
+	Name          string
+	Host          string
+	Port          int
+	Username      string
+	AuthType      string
+	GroupID       int64
+	JumpProfileID int64
 }
 
 type Group struct {
@@ -45,6 +46,20 @@ type QuickCommand struct {
 	Name      string
 	Command   string
 }
+
+type TransferRecord struct {
+	ID        int64
+	Kind      string
+	Label     string
+	Target    string
+	Done      int64
+	Total     int64
+	Status    string
+	Err       string
+	CreatedAt int64
+}
+
+const transferHistoryRetention = 7 * 24 * time.Hour
 
 type Store struct {
 	db *sqlite.DB
@@ -129,6 +144,23 @@ var migrations = [][]string{
 		)`,
 		`CREATE INDEX IF NOT EXISTS quick_commands_profile ON quick_commands(profile_id, id)`,
 	},
+	{
+		`ALTER TABLE profiles ADD COLUMN jump_profile_id INTEGER NOT NULL DEFAULT 0`,
+	},
+	{
+		`CREATE TABLE IF NOT EXISTS transfer_history (
+			id         INTEGER PRIMARY KEY,
+			kind       TEXT NOT NULL,
+			label      TEXT NOT NULL,
+			target     TEXT NOT NULL DEFAULT '',
+			done       INTEGER NOT NULL DEFAULT 0,
+			total      INTEGER NOT NULL DEFAULT 0,
+			status     TEXT NOT NULL,
+			err        TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS transfer_history_created ON transfer_history(created_at DESC)`,
+	},
 }
 
 func migrate(ctx context.Context, db *sqlite.DB) error {
@@ -156,7 +188,7 @@ func migrate(ctx context.Context, db *sqlite.DB) error {
 
 func (s *Store) Profiles(ctx context.Context) ([]Profile, error) {
 	rows, err := s.db.Query(ctx, `
-		SELECT id, name, host, port, username, auth_type, group_id
+		SELECT id, name, host, port, username, auth_type, group_id, jump_profile_id
 		FROM profiles ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -166,13 +198,14 @@ func (s *Store) Profiles(ctx context.Context) ([]Profile, error) {
 	out := make([]Profile, 0, len(rows.Values))
 	for _, v := range rows.Values {
 		out = append(out, Profile{
-			ID:       asInt64(v[idx["id"]]),
-			Name:     asString(v[idx["name"]]),
-			Host:     asString(v[idx["host"]]),
-			Port:     int(asInt64(v[idx["port"]])),
-			Username: asString(v[idx["username"]]),
-			AuthType: asString(v[idx["auth_type"]]),
-			GroupID:  asInt64(v[idx["group_id"]]),
+			ID:            asInt64(v[idx["id"]]),
+			Name:          asString(v[idx["name"]]),
+			Host:          asString(v[idx["host"]]),
+			Port:          int(asInt64(v[idx["port"]])),
+			Username:      asString(v[idx["username"]]),
+			AuthType:      asString(v[idx["auth_type"]]),
+			GroupID:       asInt64(v[idx["group_id"]]),
+			JumpProfileID: asInt64(v[idx["jump_profile_id"]]),
 		})
 	}
 	return out, nil
@@ -183,11 +216,14 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile) error {
 	if p.GroupID < 0 {
 		p.GroupID = 0
 	}
+	if p.JumpProfileID < 0 || p.JumpProfileID == p.ID {
+		p.JumpProfileID = 0
+	}
 	if p.ID == 0 {
 		res, err := s.db.Execute(ctx, `
-			INSERT INTO profiles (name, host, port, username, auth_type, group_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			p.Name, p.Host, p.Port, p.Username, p.AuthType, p.GroupID, now, now)
+			INSERT INTO profiles (name, host, port, username, auth_type, group_id, jump_profile_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			p.Name, p.Host, p.Port, p.Username, p.AuthType, p.GroupID, p.JumpProfileID, now, now)
 		if err != nil {
 			return err
 		}
@@ -196,9 +232,9 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile) error {
 	}
 
 	_, err := s.db.Execute(ctx, `
-		UPDATE profiles SET name = ?, host = ?, port = ?, username = ?, auth_type = ?, group_id = ?, updated_at = ?
+		UPDATE profiles SET name = ?, host = ?, port = ?, username = ?, auth_type = ?, group_id = ?, jump_profile_id = ?, updated_at = ?
 		WHERE id = ?`,
-		p.Name, p.Host, p.Port, p.Username, p.AuthType, p.GroupID, now, p.ID)
+		p.Name, p.Host, p.Port, p.Username, p.AuthType, p.GroupID, p.JumpProfileID, now, p.ID)
 	return err
 }
 
@@ -244,6 +280,7 @@ func (s *Store) DeleteGroup(ctx context.Context, id int64) error {
 
 func (s *Store) DeleteProfile(ctx context.Context, id int64) error {
 	_, err := s.db.Transaction(ctx, []sqlite.Statement{
+		{SQL: `UPDATE profiles SET jump_profile_id = 0 WHERE jump_profile_id = ?`, Args: []any{id}},
 		{SQL: `DELETE FROM port_forwards WHERE profile_id = ?`, Args: []any{id}},
 		{SQL: `DELETE FROM quick_commands WHERE profile_id = ?`, Args: []any{id}},
 		{SQL: `DELETE FROM profiles WHERE id = ?`, Args: []any{id}},
@@ -372,6 +409,71 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 		{SQL: `DELETE FROM settings WHERE key = ?`, Args: []any{key}},
 		{SQL: `INSERT INTO settings (key, value) VALUES (?, ?)`, Args: []any{key, value}},
 	})
+	return err
+}
+
+func (s *Store) AddTransferRecord(ctx context.Context, r *TransferRecord) error {
+	if r.CreatedAt == 0 {
+		r.CreatedAt = time.Now().Unix()
+	}
+	cutoff := time.Now().Add(-transferHistoryRetention).Unix()
+	results, err := s.db.Transaction(ctx, []sqlite.Statement{
+		{SQL: `INSERT INTO transfer_history (kind, label, target, done, total, status, err, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			Args: []any{r.Kind, r.Label, r.Target, r.Done, r.Total, r.Status, r.Err, r.CreatedAt}},
+		{SQL: `DELETE FROM transfer_history WHERE created_at < ?`, Args: []any{cutoff}},
+		{SQL: `DELETE FROM transfer_history WHERE id NOT IN (
+			SELECT id FROM transfer_history ORDER BY id DESC LIMIT 200
+		)`},
+	})
+	if err != nil {
+		return err
+	}
+	r.ID = results[0].LastInsertID
+	return nil
+}
+
+func (s *Store) TransferHistory(ctx context.Context, limit int) ([]TransferRecord, error) {
+	return s.TransferHistorySince(ctx, limit, time.Now().Add(-transferHistoryRetention))
+}
+
+func (s *Store) TransferHistorySince(ctx context.Context, limit int, since time.Time) ([]TransferRecord, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT id, kind, label, target, done, total, status, err, created_at
+		FROM transfer_history WHERE created_at >= ? ORDER BY id DESC LIMIT ?`, since.Unix(), limit)
+	if err != nil {
+		return nil, err
+	}
+
+	idx := columns(rows.Columns)
+	out := make([]TransferRecord, 0, len(rows.Values))
+	for _, v := range rows.Values {
+		out = append(out, TransferRecord{
+			ID:        asInt64(v[idx["id"]]),
+			Kind:      asString(v[idx["kind"]]),
+			Label:     asString(v[idx["label"]]),
+			Target:    asString(v[idx["target"]]),
+			Done:      asInt64(v[idx["done"]]),
+			Total:     asInt64(v[idx["total"]]),
+			Status:    asString(v[idx["status"]]),
+			Err:       asString(v[idx["err"]]),
+			CreatedAt: asInt64(v[idx["created_at"]]),
+		})
+	}
+	return out, nil
+}
+
+func (s *Store) PruneTransferHistory(ctx context.Context) error {
+	cutoff := time.Now().Add(-transferHistoryRetention).Unix()
+	_, err := s.db.Execute(ctx, `DELETE FROM transfer_history WHERE created_at < ?`, cutoff)
+	return err
+}
+
+func (s *Store) ClearTransferHistory(ctx context.Context) error {
+	_, err := s.db.Execute(ctx, `DELETE FROM transfer_history`)
 	return err
 }
 

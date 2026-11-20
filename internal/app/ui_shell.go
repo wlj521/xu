@@ -530,14 +530,32 @@ func (a *App) connectModal(c *ui.Context, t *ui.Theme) {
 							ui.Select(c, &a.groupChoice, a.groupOptions()).FillWidth()
 						}).Grow(1)
 					})
-					passwordHint := "留空则尝试 ~/.xu/keys 私钥"
-					if editing {
-						passwordHint = "留空则使用已保存密码或私钥"
-					}
-					fieldColumn(c, "密码", func() {
-						ui.TextInput(c, &a.password).Label("密码（可留空）").
-							Placeholder(passwordHint).Password()
+
+					fieldColumn(c, "跳板机", func() {
+						ui.Select(c, &a.jumpChoice, a.jumpOptions()).FillWidth()
 					})
+					if a.jumpIDByChoice(a.jumpChoice) != 0 {
+						ui.Text(c, "目标服务器会通过所选连接建立 SSH 隧道；跳板机也可以继续使用跳板机。").
+							FontSize(8.8).TextColor(colMuted2).LineHeight(1.45)
+					}
+
+					ui.Column(c).Gap(5).Children(func() {
+						ui.Text(c, "认证方式").FontSize(9.5).FontWeight(600).TextColor(colMuted)
+						ui.Tabs(c, &a.authMode, "密码", "私钥", "Agent")
+						ui.Text(c, authModeHint(a.authMode, editing)).
+							FontSize(8.8).TextColor(colMuted2).LineHeight(1.45)
+					})
+
+					if a.authMode == authModePassword {
+						passwordHint := "请输入密码"
+						if editing {
+							passwordHint = "留空则沿用已保存密码"
+						}
+						fieldColumn(c, "密码", func() {
+							ui.TextInput(c, &a.password).Label("密码").
+								Placeholder(passwordHint).Password()
+						})
+					}
 
 					if editing {
 						ui.Text(c, "修改会立即保存到连接列表").

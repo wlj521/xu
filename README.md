@@ -6,8 +6,8 @@
 
 ![Xu 欢迎页：快速连接、连接管理、最近连接与工作台能力](design/images/welcome.png)
 
-- 版本：`0.3.6`
-- 技术栈：Go `1.27.3` + [mygo](https://github.com/egoist/mygo) `0.10.0` 原生 UI + Ghostty VT
+- 版本：`0.3.7`
+- 技术栈：Go `1.27.4` + [mygo](https://github.com/egoist/mygo) `0.10.0` 原生 UI + Ghostty VT
 - 平台：Windows（x64）、macOS（Universal）、Linux（amd64 / arm64）
 - 项目主页：<https://wlj521.github.io/xu/>
 
@@ -23,16 +23,18 @@
 
 ## 功能
 
-- **会话管理**：用户自建分组、保存 SSH 连接、密码/私钥认证、主机密钥 TOFU 校验、快速连接与连接管理器；支持从 JSON 连接配置批量导入服务器；同一服务器可开多个标签页（自动编号区分）。
+- **会话管理**：用户自建分组、保存 SSH 连接、密码/私钥/SSH Agent 认证、主机密钥 TOFU 校验、快速连接与连接管理器；支持从 JSON 连接配置批量导入服务器；同一服务器可开多个标签页（自动编号区分）。
+- **跳板机**：连接配置可选择另一个已保存连接作为跳板机，并通过它打开 SSH 隧道；跳板机自身也可继续选择跳板机，形成多级链路，循环引用会被阻止。
 - **终端**：多标签页 SSH 终端与本地终端（顶部标签栏切换/关闭，同一服务器可开多个标签）、查找、清屏、断线重连。
 - **快捷命令**：顶部查找按钮左侧提供快捷命令菜单，支持全局和当前服务器两种作用范围；可新增、编辑、删除常用命令，点击命令只填入当前终端，确认无误后按 Enter 执行，适合快速进入项目目录或查看日志。
 - **日志高亮**：内置通用日志、Nginx、JSON 三套规则包，自动给时间戳、TRACE/DEBUG/INFO/WARN/ERROR、线程、logger、IP、HTTP 方法等字段着色；支持自定义正则/关键字、16 色调色板、整行/加粗和排序，也可以添加多条自定义日志格式（从行首匹配的正则）来识别特殊日志行。修改即时作用于已打开的 SSH 终端的新输出；含 ANSI 颜色、进度条和全屏程序的行原样放行（本地终端暂不支持）。详见 [日志高亮使用说明](docs/log-highlight.md)。
-- **文件**：底部文件面板：左侧目录树、面包屑路径，文件名 / 大小 / 类型 / 修改时间 / 权限 / 用户组列表；SSH 会话浏览远端 SFTP，本地终端不显示底部文件面板；远端默认从 `/` 打开，单击选中、双击目录进入下一层，面板高度可上下拖动（双击分隔条复位），支持上传、下载、新建文件/文件夹、重命名、删除（文件夹连同其中的内容一起删除，可随时停止）、远程文本编辑；编辑器以浮动多标签窗口显示在终端区域上方，底部文件面板保持可用，可继续双击文件同时编辑多个文件；可以直接把本机文件和文件夹拖入远端目录上传，文件夹会保留原有层级，适合发布 `dist` 之类的构建产物。
+- **文件**：底部文件面板：左侧目录树、面包屑路径，文件名 / 大小 / 类型 / 修改时间 / 权限 / 用户组列表；SSH 会话浏览远端 SFTP，本地终端不显示底部文件面板；远端默认从 `/` 打开，单击选中、双击目录进入下一层，面板高度可上下拖动（双击分隔条复位），支持上传、文件/文件夹下载、新建文件/文件夹、重命名、删除（文件夹连同其中的内容一起删除，可随时停止）、远程文本编辑；编辑器以浮动多标签窗口显示在终端区域上方，底部文件面板保持可用，可继续双击文件同时编辑多个文件；可以直接把本机文件和文件夹拖入远端目录上传，文件夹会保留原有层级，适合发布 `dist` 之类的构建产物。
+- **传输队列**：上传和下载会进入并发队列，可在「传输」面板查看、暂停、继续或移除任务；支持目录递归下载、失败重试、已完成文件续传、未完成文件按字节续传，以及覆盖 / 跳过 / 重命名三种同名文件策略。传输历史保存最近 7 天。
 - **监控**：左侧常驻服务器监控：CPU、内存、交换、网络上下行柱状图（可按网卡筛选）、延迟曲线、磁盘挂载点、进程内存/CPU 与主机信息；顶部显示服务器 IP，点击复制；可收起到侧边。
 - **隧道**：本地转发、远程转发、SOCKS5。
 - **批量命令**：在多台已保存主机上执行同一条命令。
 - **界面**：深浅色主题、八种强调色（默认薄荷绿）、617 套内置 Ghostty 终端配色、顶部多标签会话、可收起左侧监控栏/底部面板；主机密钥确认、文件重命名和删除确认都使用应用内弹窗。
-- **设置**：主题、强调色、终端配色、终端字号/字体/回滚缓冲、复制与查找行为、日志高亮规则；关闭设置时自动保存。
+- **设置**：主题、强调色、终端配色、终端字号/字体/回滚缓冲、复制与查找行为、传输并发/同名策略、日志高亮规则；关闭设置时自动保存。
 - **终端配色**：「设置 → 配色」可搜索、预览并即时应用 Ghostty/iTerm2 的 617 套配色；也支持把 Ghostty 主题文件（文件名即配色名）放进 `%LOCALAPPDATA%\ghostty\themes`，点「重新加载」后出现在列表中。
 - **更新**：从 v0.1.1 起支持自动更新——启动后每天检查一次，也可在「设置 → 关于」手动检查；更新包使用 Ed25519 签名校验，下载后提示安装并重启。
 
@@ -61,12 +63,12 @@
 - Windows 10 1809+ / Windows 11（x64）
 - macOS 12+（Intel / Apple Silicon）
 - Linux（amd64 / arm64）
-- Go `1.27.3`
+- Go `1.27.4`
 - Windows 打包需要 PowerShell 7 或 Windows PowerShell 5.1
 - 不需要单独安装 mygo：`go.mod` 已把 mygo CLI 固定为 Go tool
 
 ```powershell
-go version    # 需要 1.27+
+go version    # 需要 1.27.4+
 ```
 
 ## 快速开始
@@ -99,10 +101,19 @@ build\windows-amd64\MD5SUMS
 `SHA256SUMS` / `MD5SUMS` 是便携版和安装包的校验值（`sha256sum` / `md5sum` 格式）。建议使用 SHA-256 校验完整性；MD5 仅为兼容旧工具保留，不建议作为安全校验。Windows 上可这样对照：
 
 ```powershell
-Get-FileHash .\xu-setup-0.3.6-amd64.exe -Algorithm SHA256
+Get-FileHash .\xu-setup-0.3.7-amd64.exe -Algorithm SHA256
 # 或者
-certutil -hashfile .\xu-setup-0.3.6-amd64.exe SHA256
+certutil -hashfile .\xu-setup-0.3.7-amd64.exe SHA256
 ```
+
+只生成免安装版时使用：
+
+```powershell
+.\build-portable.ps1
+```
+
+该脚本会先清空 `build\`，最终只保留 `build\Xu.exe`、便携版压缩包和 `SHA256SUMS`。
+如果 Xu 正在从 `build\` 目录运行，请先手动退出再打包；从已安装目录或其他位置运行的 Xu 不受影响。脚本不会结束任何 Xu 进程。
 
 便携版 `Xu.exe` 已经包含：
 
@@ -202,8 +213,8 @@ powershell -ExecutionPolicy Bypass -File .\build-local.ps1
 Release 同时包含各平台的 `update-*.json`、签名更新归档和 `install.sh` / `install.ps1`，并生成统一的 `SHA256SUMS` / `MD5SUMS`。
 
 ```bash
-git tag v0.3.6
-git push origin v0.3.6
+git tag v0.3.7
+git push origin v0.3.7
 ```
 
 工作流会核对标签与 `mygo.json` 的 `version`，发版前先更新版本号。macOS 和 Linux 可以使用同一条安装脚本：
@@ -230,6 +241,10 @@ go vet ./...
 ```
 
 `test-local.ps1` 会把 `GOTMPDIR` 指向项目内 `.gotmp/`，减少 Windows 杀毒软件隔离 `*.test.exe` 的问题。
+
+## 开发路线
+
+尚未完成的计划和验收标准见 [docs/roadmap.md](docs/roadmap.md)。
 
 ## 快捷键
 
@@ -262,10 +277,26 @@ go vet ./...
 ```
 
 - 密码通过 `mygo.Secrets` 保存到系统凭据存储，不写入 SQLite 明文。
-- 私钥放在 `%USERPROFILE%\.xu\keys\`，当前版本不支持带口令的私钥。
+- 私钥放在 `%USERPROFILE%\.xu\keys\`，当前版本不支持在应用内输入私钥口令；带口令的私钥可以加载到 SSH Agent 后使用。
+- SSH Agent 认证直接使用系统 Agent 中的密钥签名，私钥不会进入 Xu。Windows 使用 OpenSSH Authentication Agent 服务，macOS/Linux 使用 `SSH_AUTH_SOCK`。
 - 首次连接会记录主机密钥指纹；指纹变化会阻断连接。
 - 会话数据只记录连接元信息，不保存终端输出。
+- 传输历史只保存最近 7 天，界面显示最近 100 条；不保存文件内容。
 - 设置中的主题/强调色即时生效，其余设置在关闭设置弹窗时自动保存。
+
+### Windows 使用 SSH Agent
+
+先在 PowerShell 中启动 OpenSSH Authentication Agent，并加载私钥：
+
+```powershell
+Get-Service ssh-agent
+Set-Service ssh-agent -StartupType Automatic
+Start-Service ssh-agent
+ssh-add $env:USERPROFILE\.ssh\id_ed25519
+ssh-add -l
+```
+
+然后在「新建连接 → 认证方式」中选择「Agent」。如果 `ssh-add -l` 没有输出密钥，Xu 会提示 Agent 中没有可用密钥。
 
 ## 项目结构
 

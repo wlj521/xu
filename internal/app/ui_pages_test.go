@@ -57,9 +57,68 @@ func TestConnectionModalRenders(t *testing.T) {
 	tt := ui.NewTester(a.View, 1280, 900)
 	tt.Frame()
 
-	for _, want := range []string{"新建 SSH 连接", "名称", "主机", "端口", "用户名", "密码", "保存", "取消"} {
+	for _, want := range []string{
+		"新建 SSH 连接", "名称", "主机", "端口", "用户名",
+		"跳板机", "认证方式", "密码", "私钥", "Agent", "保存", "取消",
+	} {
 		if !tt.HasText(want) {
 			t.Fatalf("missing %q; texts = %q", want, tt.Texts())
+		}
+	}
+}
+
+func TestConnectionFormRestoresAgentAuth(t *testing.T) {
+	a := New()
+	a.editProfile(store.Profile{
+		ID:       2,
+		Name:     "agent-host",
+		Host:     "10.0.0.12",
+		Port:     22,
+		Username: "deploy",
+		AuthType: "agent",
+	})
+
+	if a.authMode != authModeAgent {
+		t.Fatalf("auth mode = %d, want agent", a.authMode)
+	}
+	p, _, err := a.formProfile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.AuthType != "agent" {
+		t.Fatalf("form auth type = %q, want agent", p.AuthType)
+	}
+}
+
+func TestConnectionFormSelectsAgentAuth(t *testing.T) {
+	a := New()
+	a.openConnectForm()
+
+	tt := ui.NewTester(a.View, 1280, 900)
+	tt.Frame()
+	if err := tt.Click("Agent"); err != nil {
+		t.Fatalf("click Agent auth: %v", err)
+	}
+	if a.authMode != authModeAgent {
+		t.Fatalf("auth mode = %d, want agent", a.authMode)
+	}
+
+	tt.Frame()
+	if !tt.HasText("使用系统 SSH Agent 中的密钥签名") {
+		t.Fatalf("Agent hint is missing; texts = %q", tt.Texts())
+	}
+}
+
+func TestPasswordIsOnlyUsedByPasswordAuth(t *testing.T) {
+	a := New()
+	a.password = "secret"
+
+	if got := a.passwordForAuth("password"); got != "secret" {
+		t.Fatalf("password auth = %q, want the typed password", got)
+	}
+	for _, authType := range []string{"key", "agent"} {
+		if got := a.passwordForAuth(authType); got != "" {
+			t.Fatalf("%s auth received password %q", authType, got)
 		}
 	}
 }

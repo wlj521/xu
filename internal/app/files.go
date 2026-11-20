@@ -63,24 +63,6 @@ type fileBrowser struct {
 	treeErr    map[string]string
 }
 
-type transferState struct {
-	id     int64
-	label  string
-	target string
-	done   int64
-	total  int64
-	cancel context.CancelFunc
-}
-
-type transferRecord struct {
-	Label    string
-	Target   string
-	Done     int64
-	Total    int64
-	Err      string
-	Canceled bool
-}
-
 var saveDownloadDialog = func(opts mygo.SaveDialogOptions) (string, error) {
 	return mygo.Dialog.Save(opts)
 }
@@ -200,18 +182,23 @@ func (a *App) ensureFileBrowser(ts *termSession) (*fileBrowser, error) {
 }
 
 func (a *App) transferBar(c *ui.Context, t *ui.Theme) {
-	tr := a.transfer
-	if tr == nil {
+	if !a.hasTransfers() {
 		return
 	}
+	active, queued, done, total := a.transferQueueStats()
 	pct := 0
-	if tr.total > 0 {
-		pct = int(tr.done * 100 / tr.total)
+	if total > 0 {
+		pct = int(done * 100 / total)
 	}
 	ui.Row(c).Padding(4, 12).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, fmt.Sprintf("%s  %d%%  %s / %s", tr.label, pct, humanSize(tr.done), humanSize(tr.total))).TextColor(t.TextMuted)
-		if ui.Button(c, "取消").Clicked() && tr.cancel != nil {
-			tr.cancel()
+		label := fmt.Sprintf("传输队列 · %d 个任务", active+queued)
+		if active > 0 {
+			label = fmt.Sprintf("%s · %d%%  %s / %s", label, pct, humanSize(done), humanSize(total))
+		}
+		ui.Text(c, label).TextColor(t.TextMuted)
+		ui.Text(c, "").Grow(1)
+		if ui.Button(c, "查看队列").Clicked() {
+			a.setDockTab(dockTransfers)
 		}
 	})
 }
@@ -221,7 +208,7 @@ func (a *App) transferBar(c *ui.Context, t *ui.Theme) {
 func (a *App) localPane(c *ui.Context, b *fileBrowser, t *ui.Theme) {
 	ui.Column(c).FillWidth().FillHeight().Children(func() {
 		a.localPathBar(c, t, b)
-		if a.transfer != nil {
+		if a.hasTransfers() {
 			a.transferBar(c, t)
 		}
 		if b.localErr != "" {
@@ -264,7 +251,11 @@ func (a *App) fileContextMenu(m *ui.Menu, b *fileBrowser, remote bool) {
 			}
 		}
 		if remote {
-			if m.Item("下载到本机").Chosen() {
+			label := "下载到本机"
+			if f.IsDir() {
+				label = "下载文件夹"
+			}
+			if m.Item(label).Chosen() {
 				a.downloadSelected(b)
 			}
 		} else {
@@ -333,35 +324,6 @@ func (a *App) fileBackgroundMenu(m *ui.Menu, b *fileBrowser, remote bool) {
 			b.loadLocal()
 		}
 	}
-}
-
-func (a *App) transferTray(c *ui.Context, t *ui.Theme) {
-	tr := a.transfer
-	if tr == nil {
-		return
-	}
-	pct := 0
-	if tr.total > 0 {
-		pct = int(tr.done * 100 / tr.total)
-	}
-	icon := iconDownload
-	if strings.Contains(tr.label, "上传") {
-		icon = iconUpload
-	}
-	ui.Column(c).FillWidth().Shrink(0).Padding(9, 12).Gap(7).
-		Background(colPanel).Border(1, colLine).Radius(6).Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			iconEl(c, icon, 13, colCyan)
-			ui.Text(c, shortLabel(tr.label, 60)).FontSize(10.5).TextColor(colText).NoWrap()
-			ui.Text(c, "").Grow(1)
-			ui.Text(c, fmt.Sprintf("%d%% · %s / %s", pct, humanSize(tr.done), humanSize(tr.total))).
-				FontSize(9).Font("Cascadia Code").TextColor(colMuted2).NoWrap()
-			if ghostAction(c, t, "files-transfer-cancel", "取消", nil).Clicked() && tr.cancel != nil {
-				tr.cancel()
-			}
-		})
-		barFill(c, float64(pct)/100, colCyan, 4)
-	})
 }
 
 func fileColumns() []ui.TableColumn {
@@ -791,17 +753,33 @@ func (a *App) downloadSelected(b *fileBrowser) {
 		a.fileErr = "需要 SSH 连接才能下载"
 		return
 	}
-	if a.transfer != nil {
-		a.fileErr = "已有传输在进行，请等待或取消"
-		return
-	}
 	f := selectedEntry(b.remoteEntries, b.remoteSel)
 	if f == nil {
-		a.fileErr = "请先在右侧选择文件"
+		a.fileErr = "请先在右侧选择文件或文件夹"
 		return
 	}
+
+	remote := path.Join(b.remoteDir, f.Name())
 	if f.IsDir() {
-		a.fileErr = "暂不支持目录下载"
+		parent, localRoot, err := a.chooseDownloadFolder(b, f)
+		if err != nil {
+			a.fileErr = "无法选择下载位置: " + err.Error()
+			return
+		}
+		if localRoot == "" {
+			return
+		}
+		b.localDir = parent
+		conflict := a.transferConflictPolicy()
+		state := newTransferResumeState()
+		factory := func() func(context.Context, func(int64, int64)) error {
+			return func(ctx context.Context, report func(int64, int64)) error {
+				return downloadDirectoryWithState(ctx, b.client, remote, localRoot, conflict, report, state)
+			}
+		}
+		a.enqueueTransferFactory(transferDownload, "下载文件夹 "+f.Name(), localRoot, b.termID, factory, func() {
+			b.loadLocal()
+		})
 		return
 	}
 
@@ -816,9 +794,8 @@ func (a *App) downloadSelected(b *fileBrowser) {
 	local = filepath.Clean(local)
 	b.localDir = filepath.Dir(local)
 
-	remote := path.Join(b.remoteDir, f.Name())
-	a.startTransferTo("下载 "+f.Name(), local, func(ctx context.Context, report func(int64, int64)) error {
-		return downloadFile(ctx, b.client, remote, local, report)
+	a.enqueueTransfer(transferDownload, "下载 "+f.Name(), local, b.termID, func(ctx context.Context, report func(int64, int64)) error {
+		return downloadFileResume(ctx, b.client, remote, local, report)
 	}, func() {
 		b.loadLocal()
 	})
@@ -833,59 +810,6 @@ func (a *App) chooseDownloadDestination(b *fileBrowser, f os.FileInfo) (string, 
 		Message:           "选择远程文件保存到本机的位置",
 		CreateDirectories: true,
 	})
-}
-
-func (a *App) startTransfer(label string, work func(context.Context, func(int64, int64)) error, done func()) {
-	a.startTransferTo(label, "", work, done)
-}
-
-func (a *App) startTransferTo(label, target string, work func(context.Context, func(int64, int64)) error, done func()) {
-	id := a.nextTransferID
-	a.nextTransferID++
-	ctx, cancel := context.WithCancel(a.ctx)
-	a.transfer = &transferState{id: id, label: label, target: target, cancel: cancel}
-	a.fileErr = ""
-
-	go func() {
-		err := work(ctx, func(done, total int64) {
-			a.post(func() {
-				if a.transfer != nil && a.transfer.id == id {
-					a.transfer.done = done
-					a.transfer.total = total
-				}
-			})
-		})
-
-		a.post(func() {
-			var doneBytes, totalBytes int64
-			if a.transfer != nil && a.transfer.id == id {
-				doneBytes = a.transfer.done
-				totalBytes = a.transfer.total
-				a.transfer = nil
-			}
-			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					a.status = "传输已取消"
-				} else {
-					a.fileErr = "传输失败: " + err.Error()
-				}
-				a.addTransferLog(transferRecord{
-					Label: label, Target: target, Done: doneBytes, Total: totalBytes, Err: err.Error(),
-					Canceled: errors.Is(err, context.Canceled),
-				})
-				return
-			}
-			a.addTransferLog(transferRecord{Label: label, Target: target, Done: doneBytes, Total: totalBytes})
-			if target != "" {
-				a.status = label + "完成 · " + shortLabel(target, 70)
-			} else {
-				a.status = label + "完成"
-			}
-			if done != nil {
-				done()
-			}
-		})
-	}()
 }
 
 func uploadFile(ctx context.Context, client *sftp.Client, local, remote string, report func(int64, int64)) error {
@@ -967,9 +891,139 @@ func downloadFile(ctx context.Context, client *sftp.Client, remote, local string
 	return nil
 }
 
+func uploadFileResume(ctx context.Context, client *sftp.Client, local, remote string, report func(int64, int64)) error {
+	src, err := os.Open(local)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	st, err := src.Stat()
+	if err != nil {
+		return err
+	}
+
+	tmp := remote + ".xu-part"
+	var offset int64
+	partExists := false
+	if part, err := client.Stat(tmp); err == nil {
+		partExists = true
+		if part.Size() > st.Size() {
+			_ = client.Remove(tmp)
+			partExists = false
+		} else {
+			offset = part.Size()
+		}
+	}
+	if offset > 0 {
+		if _, err := src.Seek(offset, io.SeekStart); err != nil {
+			return err
+		}
+	}
+
+	if offset < st.Size() || !partExists {
+		dst, err := client.OpenFile(tmp, os.O_WRONLY|os.O_CREATE)
+		if err != nil {
+			return err
+		}
+		if offset > 0 {
+			if _, err := dst.Seek(offset, io.SeekStart); err != nil {
+				dst.Close()
+				return err
+			}
+		}
+		if report != nil {
+			report(offset, st.Size())
+		}
+		if err := copyWithProgressFrom(ctx, dst, src, st.Size(), offset, report); err != nil {
+			dst.Close()
+			return err
+		}
+		if err := dst.Close(); err != nil {
+			return err
+		}
+	}
+
+	if err := client.PosixRename(tmp, remote); err != nil {
+		_ = client.Remove(remote)
+		if err2 := client.Rename(tmp, remote); err2 != nil {
+			return err2
+		}
+	}
+	return nil
+}
+
+func downloadFileResume(ctx context.Context, client *sftp.Client, remote, local string, report func(int64, int64)) error {
+	src, err := client.Open(remote)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	st, err := src.Stat()
+	if err != nil {
+		return err
+	}
+
+	tmp := local + ".part"
+	var offset int64
+	partExists := false
+	if part, err := os.Stat(tmp); err == nil {
+		partExists = true
+		if part.Size() > st.Size() {
+			_ = os.Remove(tmp)
+			partExists = false
+		} else {
+			offset = part.Size()
+		}
+	}
+	if offset > 0 {
+		if _, err := src.Seek(offset, io.SeekStart); err != nil {
+			return err
+		}
+	}
+
+	if offset < st.Size() || !partExists {
+		dst, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE, 0o644)
+		if err != nil {
+			return err
+		}
+		if offset > 0 {
+			if _, err := dst.Seek(offset, io.SeekStart); err != nil {
+				dst.Close()
+				return err
+			}
+		}
+		if report != nil {
+			report(offset, st.Size())
+		}
+		if err := copyWithProgressFrom(ctx, dst, src, st.Size(), offset, report); err != nil {
+			dst.Close()
+			return err
+		}
+		if err := dst.Close(); err != nil {
+			return err
+		}
+	}
+
+	if err := os.Rename(tmp, local); err != nil {
+		if removeErr := os.Remove(local); removeErr == nil {
+			err = os.Rename(tmp, local)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func copyWithProgress(ctx context.Context, dst io.Writer, src io.Reader, total int64, report func(int64, int64)) error {
+	return copyWithProgressFrom(ctx, dst, src, total, 0, report)
+}
+
+func copyWithProgressFrom(ctx context.Context, dst io.Writer, src io.Reader, total, start int64, report func(int64, int64)) error {
 	buf := make([]byte, 128<<10)
-	var done int64
+	done := start
 	var last time.Time
 
 	for {

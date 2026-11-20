@@ -4,13 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
+)
+
+const (
+	AuthPassword = "password"
+	AuthKey      = "key"
+	AuthAgent    = "agent"
 )
 
 type Profile struct {
@@ -18,6 +27,12 @@ type Profile struct {
 	Port     int
 	Username string
 	Password string
+	// AuthType selects the authentication method. An empty value keeps the
+	// historical behaviour: try the password, then local key files.
+	AuthType string
+	// Jump is the SSH host used to reach this profile. It may itself have a
+	// Jump, forming a chain.
+	Jump *Profile
 }
 
 // HostKeyError is returned from the handshake when the host key is not
@@ -40,7 +55,8 @@ type TrustFunc func(host, fingerprint string) bool
 type Phase int
 
 const (
-	PhaseTCP         Phase = iota // dialing the TCP socket
+	PhaseJump        Phase = iota // connecting through a jump host
+	PhaseTCP                      // dialing the TCP socket
 	PhaseKeyExchange              // exchanging versions and keys
 	PhaseHostKey                  // waiting for the user to trust a new host key
 	PhaseAuth                     // verifying the account
@@ -55,27 +71,53 @@ func Dial(ctx context.Context, p Profile, trust TrustFunc) (*ssh.Client, error) 
 	return DialWithProgress(ctx, p, trust, nil)
 }
 
+const maxJumpDepth = 8
+
 // DialWithProgress is Dial with a callback that reports every phase, which
 // the connecting tab uses to say what it is actually doing.
 func DialWithProgress(ctx context.Context, p Profile, trust TrustFunc, progress PhaseFunc) (*ssh.Client, error) {
+	return dialWithProgress(ctx, p, trust, progress, 0)
+}
+
+func dialWithProgress(ctx context.Context, p Profile, trust TrustFunc, progress PhaseFunc, depth int) (*ssh.Client, error) {
+	if depth > maxJumpDepth {
+		return nil, fmt.Errorf("跳板机层级超过 %d 级", maxJumpDepth)
+	}
+
 	report := func(ph Phase) {
 		if progress != nil {
 			progress(ph)
 		}
 	}
 
-	auth, err := authMethods(p)
+	auth, closeAuth, err := authMethods(p)
 	if err != nil {
 		return nil, err
 	}
+	defer closeAuth()
 
 	addr := net.JoinHostPort(p.Host, strconv.Itoa(p.Port))
 
-	report(PhaseTCP)
-	d := net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	raw, err := d.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return nil, fmt.Errorf("无法连接 %s: %w", addr, err)
+	var raw net.Conn
+	if p.Jump != nil {
+		report(PhaseJump)
+		jump, err := dialWithProgress(ctx, *p.Jump, trust, progress, depth+1)
+		if err != nil {
+			return nil, fmt.Errorf("连接跳板机 %s 失败: %w", net.JoinHostPort(p.Jump.Host, strconv.Itoa(p.Jump.Port)), err)
+		}
+		raw, err = dialThroughJump(ctx, jump, addr)
+		if err != nil {
+			_ = jump.Close()
+			return nil, err
+		}
+		raw = &jumpConn{Conn: raw, jump: jump}
+	} else {
+		report(PhaseTCP)
+		d := net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+		raw, err = d.DialContext(ctx, "tcp", addr)
+		if err != nil {
+			return nil, fmt.Errorf("无法连接 %s: %w", addr, err)
+		}
 	}
 	raw.SetDeadline(time.Now().Add(15 * time.Second))
 
@@ -120,13 +162,118 @@ func DialWithProgress(ctx context.Context, p Profile, trust TrustFunc, progress 
 	return ssh.NewClient(cc, chans, reqs), nil
 }
 
-func authMethods(p Profile) ([]ssh.AuthMethod, error) {
-	var methods []ssh.AuthMethod
+// jumpConn keeps the jump client alive for as long as the target connection.
+// The SSH client closes the connection it was built on, which in turn closes
+// the channel and the jump session.
+type jumpConn struct {
+	net.Conn
+	jump *ssh.Client
+}
 
-	if p.Password != "" {
-		methods = append(methods, ssh.Password(p.Password))
+func (c *jumpConn) Close() error {
+	err := c.Conn.Close()
+	jumpErr := c.jump.Close()
+	if err != nil {
+		return err
 	}
+	return jumpErr
+}
 
+func dialThroughJump(ctx context.Context, jump *ssh.Client, addr string) (net.Conn, error) {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = jump.Close()
+		case <-done:
+		}
+	}()
+
+	conn, err := jump.Dial("tcp", addr)
+	close(done)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fmt.Errorf("跳板机转发到 %s 失败: %w", addr, err)
+	}
+	return conn, nil
+}
+
+type agentDialer func() (io.ReadWriteCloser, error)
+
+func authMethods(p Profile) ([]ssh.AuthMethod, func(), error) {
+	return authMethodsWith(p, dialAgent)
+}
+
+// authMethodsWith builds the authentication methods for a profile. The
+// returned close function releases any Agent connection after the SSH
+// handshake; callers must always call it, including on error.
+func authMethodsWith(p Profile, dial agentDialer) ([]ssh.AuthMethod, func(), error) {
+	noop := func() {}
+	authType := strings.ToLower(strings.TrimSpace(p.AuthType))
+
+	switch authType {
+	case AuthPassword:
+		if p.Password == "" {
+			return nil, noop, errors.New("请填写密码")
+		}
+		return []ssh.AuthMethod{ssh.Password(p.Password)}, noop, nil
+	case AuthKey:
+		methods := keyAuthMethods()
+		if len(methods) == 0 {
+			return nil, noop, errors.New("没有可用的未加密私钥：请把私钥放到 ~/.xu/keys/id_ed25519、id_ecdsa 或 id_rsa")
+		}
+		return methods, noop, nil
+	case AuthAgent:
+		if dial == nil {
+			return nil, noop, errors.New("SSH Agent 不可用")
+		}
+		conn, err := dial()
+		if err != nil {
+			return nil, noop, fmt.Errorf("无法连接 SSH Agent：%w", err)
+		}
+		methods, closeAgent, err := agentAuthMethods(conn)
+		if err != nil {
+			return nil, noop, err
+		}
+		return methods, closeAgent, nil
+	case "":
+		var methods []ssh.AuthMethod
+		if p.Password != "" {
+			methods = append(methods, ssh.Password(p.Password))
+		}
+		methods = append(methods, keyAuthMethods()...)
+		if len(methods) == 0 {
+			return nil, noop, errors.New("没有可用的认证方式：请填写密码，或把未加密私钥放到 ~/.xu/keys/id_ed25519")
+		}
+		return methods, noop, nil
+	default:
+		return nil, noop, fmt.Errorf("不支持的认证方式 %q", p.AuthType)
+	}
+}
+
+// agentAuthMethods turns an open Agent protocol connection into SSH public
+// key auth. The Agent performs the signature, so the private key never enters
+// the application.
+func agentAuthMethods(conn io.ReadWriteCloser) ([]ssh.AuthMethod, func(), error) {
+	client := agent.NewClient(conn)
+	signers, err := client.Signers()
+	if err != nil {
+		_ = conn.Close()
+		return nil, nil, fmt.Errorf("读取 SSH Agent 密钥失败：%w", err)
+	}
+	if len(signers) == 0 {
+		_ = conn.Close()
+		return nil, nil, errors.New("SSH Agent 中没有可用密钥，请先执行 ssh-add 加载私钥")
+	}
+	return []ssh.AuthMethod{ssh.PublicKeysCallback(client.Signers)}, func() {
+		_ = conn.Close()
+	}, nil
+}
+
+func keyAuthMethods() []ssh.AuthMethod {
+	var methods []ssh.AuthMethod
 	for _, path := range defaultKeyPaths() {
 		b, err := os.ReadFile(path)
 		if err != nil {
@@ -139,11 +286,7 @@ func authMethods(p Profile) ([]ssh.AuthMethod, error) {
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
 	}
-
-	if len(methods) == 0 {
-		return nil, errors.New("没有可用的认证方式：请填写密码，或把未加密私钥放到 ~/.xu/keys/id_ed25519")
-	}
-	return methods, nil
+	return methods
 }
 
 func defaultKeyPaths() []string {

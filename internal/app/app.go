@@ -33,6 +33,7 @@ type App struct {
 	groupName       string
 	groupEditID     int64
 	groupChoice     string
+	jumpChoice      string
 	collapsedGroups map[int64]bool
 
 	searchOpen  bool
@@ -66,6 +67,7 @@ type App struct {
 	port     string
 	username string
 	password string
+	authMode int
 
 	connecting          bool
 	connectingProfileID int64
@@ -197,22 +199,24 @@ type App struct {
 	lastIndex   int
 	searchInit  bool
 
-	settingsOpen       bool
-	settings           appSettings
-	settingsFontSize   string
-	settingsFontSizeF  float64
-	settingsScrollback string
-	settingsScrollPick string
-	settingsErr        string
-	settingsStatus     string
-	schemes            *schemePickerState
-	logHL              *logHighlighter
-	logRulesOpen       bool
-	logRulesTab        int
-	logRuleErrs        map[int64]string
-	logFormatErrs      map[int64]string
-	logFormatTest      string
-	logPresetPick      string
+	settingsOpen         bool
+	settings             appSettings
+	settingsFontSize     string
+	settingsFontSizeF    float64
+	settingsScrollback   string
+	settingsScrollPick   string
+	transferLimitPick    string
+	transferConflictPick string
+	settingsErr          string
+	settingsStatus       string
+	schemes              *schemePickerState
+	logHL                *logHighlighter
+	logRulesOpen         bool
+	logRulesTab          int
+	logRuleErrs          map[int64]string
+	logFormatErrs        map[int64]string
+	logFormatTest        string
+	logPresetPick        string
 
 	inspectorTab  int
 	bottomFiles   bool
@@ -230,7 +234,7 @@ type App struct {
 	newEntryName    string
 	newEntryErr     string
 
-	transfer       *transferState
+	transferTasks  []*transferTask
 	transferLog    []transferRecord
 	nextTransferID int64
 }
@@ -238,36 +242,38 @@ type App struct {
 func New() *App {
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &App{
-		ctx:                ctx,
-		stop:               cancel,
-		formOpen:           false,
-		systemDark:         true,
-		port:               "22",
-		activeTerm:         -1,
-		saveProfile:        true,
-		trusted:            make(map[string]string),
-		fileSplit:          260,
-		fileSplitPct:       50,
-		browsers:           make(map[int64]*fileBrowser),
-		monitors:           make(map[int64]*monitorState),
-		netIface:           make(map[int64]string),
-		forwardListen:      "127.0.0.1:8080",
-		forwardSave:        true,
-		forwards:           make(map[int64][]*forwardEntry),
-		batchSel:           -1,
-		batchSplit:         220,
-		searchInit:         true,
-		settings:           defaultSettings(),
-		settingsFontPick:   systemFontChoice,
-		settingsFontSize:   "13",
-		settingsFontSizeF:  13,
-		settingsScrollback: "10",
-		settingsScrollPick: "10 MB",
-		bottomFiles:        true,
-		splitPercent:       64,
-		groupChoice:        "未分组",
-		collapsedGroups:    make(map[int64]bool),
-		logPresetPick:      "通用日志",
+		ctx:                  ctx,
+		stop:                 cancel,
+		formOpen:             false,
+		systemDark:           true,
+		port:                 "22",
+		activeTerm:           -1,
+		saveProfile:          true,
+		trusted:              make(map[string]string),
+		fileSplit:            260,
+		fileSplitPct:         50,
+		browsers:             make(map[int64]*fileBrowser),
+		monitors:             make(map[int64]*monitorState),
+		netIface:             make(map[int64]string),
+		forwardListen:        "127.0.0.1:8080",
+		forwardSave:          true,
+		forwards:             make(map[int64][]*forwardEntry),
+		batchSel:             -1,
+		batchSplit:           220,
+		searchInit:           true,
+		settings:             defaultSettings(),
+		settingsFontPick:     systemFontChoice,
+		settingsFontSize:     "13",
+		settingsFontSizeF:    13,
+		settingsScrollback:   "10",
+		settingsScrollPick:   "10 MB",
+		transferLimitPick:    "2 个",
+		transferConflictPick: transferConflictLabel(transferConflictOverwrite),
+		bottomFiles:          true,
+		splitPercent:         64,
+		groupChoice:          "未分组",
+		collapsedGroups:      make(map[int64]bool),
+		logPresetPick:        "通用日志",
 	}
 	a.applyLogHighlight()
 	return a
@@ -287,6 +293,7 @@ func (a *App) SetStore(st *store.Store) {
 	a.refreshGroups()
 	a.refreshProfiles()
 	a.loadQuickCommands()
+	a.loadTransferHistory()
 
 	hosts, err := st.KnownHosts(a.ctx)
 	if err != nil {
@@ -494,21 +501,41 @@ func (a *App) formProfile() (sshx.Profile, string, error) {
 	if name == "" {
 		name = user + "@" + host
 	}
-	return sshx.Profile{Host: host, Port: port, Username: user}, name, nil
+	return sshx.Profile{
+		Host:     host,
+		Port:     port,
+		Username: user,
+		AuthType: authTypeForMode(a.authMode),
+	}, name, nil
 }
 
 func (a *App) effectivePassword() string {
+	return a.passwordForProfileID(a.profileID)
+}
+
+func (a *App) passwordForProfileID(id int64) string {
 	if a.password != "" {
-		return a.password
+		if id == a.profileID {
+			return a.password
+		}
 	}
-	if a.store == nil || a.profileID == 0 {
+	if a.store == nil || id == 0 {
 		return ""
 	}
-	pw, err := vault.Get(a.profileID, "password")
+	pw, err := vault.Get(id, "password")
 	if err != nil {
 		return ""
 	}
 	return pw
+}
+
+// passwordForAuth returns the password only for password-based profiles. Key
+// and Agent profiles must not send a stale saved password to the server.
+func (a *App) passwordForAuth(authType string) string {
+	if !isPasswordAuth(authType) {
+		return ""
+	}
+	return a.effectivePassword()
 }
 
 func (a *App) connect() {
@@ -522,7 +549,21 @@ func (a *App) connect() {
 		a.connectingProfileID = 0
 		return
 	}
-	p.Password = a.effectivePassword()
+	p.Password = a.passwordForAuth(p.AuthType)
+	if p.AuthType == sshx.AuthPassword && p.Password == "" {
+		a.connectErr = "请填写密码，或改用私钥 / Agent 认证"
+		a.status = "连接失败: " + a.connectErr
+		a.connectingProfileID = 0
+		return
+	}
+	jump, err := a.formJumpProfile()
+	if err != nil {
+		a.connectErr = err.Error()
+		a.status = "连接失败: " + err.Error()
+		a.connectingProfileID = 0
+		return
+	}
+	p.Jump = jump
 	if tab := a.activeTabRef(); tab != nil && tab.kind == tabQuickConnect {
 		a.pendingQuickTab = tab.id
 	} else {
@@ -702,19 +743,24 @@ func (a *App) saveCurrentProfile(p sshx.Profile) {
 		name = p.Username + "@" + p.Host
 	}
 
-	authType := "key"
-	if p.Password != "" {
-		authType = "password"
+	authType := p.AuthType
+	if authType == "" {
+		authType = "key"
+		if p.Password != "" {
+			authType = "password"
+		}
 	}
+	jumpID, _ := a.validateJumpChoice()
 
 	prof := store.Profile{
-		ID:       a.profileID,
-		Name:     name,
-		Host:     p.Host,
-		Port:     p.Port,
-		Username: p.Username,
-		AuthType: authType,
-		GroupID:  a.groupIDByName(a.groupChoice),
+		ID:            a.profileID,
+		Name:          name,
+		Host:          p.Host,
+		Port:          p.Port,
+		Username:      p.Username,
+		AuthType:      authType,
+		GroupID:       a.groupIDByName(a.groupChoice),
+		JumpProfileID: jumpID,
 	}
 	if err := a.store.SaveProfile(a.ctx, &prof); err != nil {
 		a.status = "保存会话失败: " + err.Error()
@@ -723,7 +769,7 @@ func (a *App) saveCurrentProfile(p sshx.Profile) {
 
 	a.profileID = prof.ID
 	a.profileName = prof.Name
-	if p.Password != "" {
+	if isPasswordAuth(p.AuthType) && p.Password != "" {
 		if err := vault.Set(prof.ID, "password", p.Password); err != nil {
 			a.status = "会话已保存，但密码未写入系统钥匙串"
 		}
@@ -763,7 +809,10 @@ func (a *App) applyProfile(p store.Profile) {
 	a.port = strconv.Itoa(p.Port)
 	a.username = p.Username
 	a.password = ""
+	a.authMode = authModeForType(p.AuthType)
 	a.groupChoice = a.groupNameByID(p.GroupID)
+	a.jumpChoice = a.jumpChoiceForID(p.JumpProfileID)
+	a.ensureJumpChoice()
 }
 
 func (a *App) connectSavedProfile(p store.Profile) {
@@ -814,26 +863,26 @@ func (a *App) saveProfileForm() {
 		return
 	}
 
-	authType := "key"
-	if a.password != "" {
-		authType = "password"
-	} else if a.profileID != 0 {
-		for _, old := range a.profiles {
-			if old.ID == a.profileID {
-				authType = old.AuthType
-				break
-			}
-		}
+	authType := p.AuthType
+	if isPasswordAuth(authType) && a.passwordForAuth(authType) == "" {
+		a.connectErr = "请填写密码，或改用私钥 / Agent 认证"
+		return
+	}
+	jumpID, err := a.validateJumpChoice()
+	if err != nil {
+		a.connectErr = err.Error()
+		return
 	}
 
 	prof := store.Profile{
-		ID:       a.profileID,
-		Name:     name,
-		Host:     p.Host,
-		Port:     p.Port,
-		Username: p.Username,
-		AuthType: authType,
-		GroupID:  a.groupIDByName(a.groupChoice),
+		ID:            a.profileID,
+		Name:          name,
+		Host:          p.Host,
+		Port:          p.Port,
+		Username:      p.Username,
+		AuthType:      authType,
+		GroupID:       a.groupIDByName(a.groupChoice),
+		JumpProfileID: jumpID,
 	}
 	if err := a.store.SaveProfile(a.ctx, &prof); err != nil {
 		a.connectErr = "保存失败: " + err.Error()
@@ -841,7 +890,7 @@ func (a *App) saveProfileForm() {
 	}
 	a.profileID = prof.ID
 	a.profileName = prof.Name
-	if a.password != "" {
+	if isPasswordAuth(authType) && a.password != "" {
 		if err := vault.Set(prof.ID, "password", a.password); err != nil {
 			a.status = "已保存，但密码未写入系统钥匙串"
 		}
@@ -908,8 +957,10 @@ func (a *App) resetForm() {
 	a.port = "22"
 	a.username = ""
 	a.password = ""
+	a.authMode = authModePassword
 	a.connectErr = ""
 	a.groupChoice = "未分组"
+	a.jumpChoice = directJumpChoice
 }
 
 func (a *App) refreshProfiles() {
@@ -922,6 +973,7 @@ func (a *App) refreshProfiles() {
 		return
 	}
 	a.profiles = profs
+	a.ensureJumpChoice()
 }
 
 // closeTerm closes the tab of the i-th session. Tabs close at once, like the
@@ -944,6 +996,7 @@ func (a *App) closeTermSession(ts *termSession) {
 	if ts == nil {
 		return
 	}
+	a.cancelTransfersForSession(ts.ID)
 	a.discardEditorsForTerm(ts.ID)
 	a.stopMonitor(ts.ID)
 	a.stopForwards(ts.ID)

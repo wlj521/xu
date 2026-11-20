@@ -33,7 +33,7 @@ func main() {
 		if _, err := os.Stat(readme); os.IsNotExist(err) {
 			_ = os.WriteFile(readme, []byte(
 				"把 OpenSSH 格式的私钥放在这里：id_ed25519、id_ecdsa 或 id_rsa。\n"+
-					"当前版本不支持带口令的私钥。\n",
+					"当前版本不支持在应用内输入私钥口令；带口令的私钥可通过系统 SSH Agent 使用。\n",
 			), 0o600)
 		}
 	}
