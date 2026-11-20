@@ -16,6 +16,7 @@ func (a *App) dialWithPrompt(p sshx.Profile) (*ssh.Client, error) {
 // dialWithPromptCtx dials with its own context, so closing a connecting tab
 // can cancel that dial, and reports its phases to the connecting page.
 func (a *App) dialWithPromptCtx(ctx context.Context, p sshx.Profile, progress sshx.PhaseFunc) (*ssh.Client, error) {
+	p = a.attachAuthCallbacks(p)
 	client, err := sshx.DialWithProgress(ctx, p, a.trustHost, progress)
 
 	var hk *sshx.HostKeyError
@@ -105,6 +106,8 @@ func (a *App) reconnect(ts *termSession) {
 			ts.Close()
 			a.autoStartForwards(newTS)
 			a.startMonitorBackground(newTS)
+			a.touchProfile(newTS.profileID)
+			a.saveWorkspace()
 		})
 	}()
 }

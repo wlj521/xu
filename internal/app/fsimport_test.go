@@ -133,7 +133,9 @@ func TestConnectionManagerHasImportAction(t *testing.T) {
 	a.managerOpen = true
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
-	if !tt.HasText("导入") {
-		t.Fatalf("connection manager has no import action; texts = %q", tt.Texts())
+	for _, want := range []string{"导入", "导出"} {
+		if !tt.HasText(want) {
+			t.Fatalf("connection manager has no %q action; texts = %q", want, tt.Texts())
+		}
 	}
 }

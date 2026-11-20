@@ -186,14 +186,24 @@ func (a *App) transferBar(c *ui.Context, t *ui.Theme) {
 		return
 	}
 	active, queued, done, total := a.transferQueueStats()
+	waiting := 0
+	for _, task := range a.transferTasks {
+		if task.status == transferPaused || task.status == transferFailed {
+			waiting++
+		}
+	}
 	pct := 0
 	if total > 0 {
 		pct = int(done * 100 / total)
 	}
 	ui.Row(c).Padding(4, 12).Gap(8).AlignItems(ui.Center).Children(func() {
-		label := fmt.Sprintf("传输队列 · %d 个任务", active+queued)
+		label := fmt.Sprintf("传输队列 · %d 个任务", len(a.transferTasks))
 		if active > 0 {
 			label = fmt.Sprintf("%s · %d%%  %s / %s", label, pct, humanSize(done), humanSize(total))
+		} else if queued > 0 {
+			label = fmt.Sprintf("%s · %d 个等待", label, queued)
+		} else if waiting > 0 {
+			label = fmt.Sprintf("%s · %d 个待继续", label, waiting)
 		}
 		ui.Text(c, label).TextColor(t.TextMuted)
 		ui.Text(c, "").Grow(1)
@@ -770,15 +780,13 @@ func (a *App) downloadSelected(b *fileBrowser) {
 			return
 		}
 		b.localDir = parent
-		conflict := a.transferConflictPolicy()
-		state := newTransferResumeState()
-		factory := func() func(context.Context, func(int64, int64)) error {
-			return func(ctx context.Context, report func(int64, int64)) error {
-				return downloadDirectoryWithState(ctx, b.client, remote, localRoot, conflict, report, state)
-			}
-		}
-		a.enqueueTransferFactory(transferDownload, "下载文件夹 "+f.Name(), localRoot, b.termID, factory, func() {
-			b.loadLocal()
+		a.enqueueTransferJob(transferDownload, "下载文件夹 "+f.Name(), localRoot, b.termID, transferPayload{
+			Conflict: int(a.transferConflictPolicy()),
+			Download: &transferDownloadPayload{
+				Remote:    remote,
+				Local:     localRoot,
+				Directory: true,
+			},
 		})
 		return
 	}
@@ -794,10 +802,12 @@ func (a *App) downloadSelected(b *fileBrowser) {
 	local = filepath.Clean(local)
 	b.localDir = filepath.Dir(local)
 
-	a.enqueueTransfer(transferDownload, "下载 "+f.Name(), local, b.termID, func(ctx context.Context, report func(int64, int64)) error {
-		return downloadFileResume(ctx, b.client, remote, local, report)
-	}, func() {
-		b.loadLocal()
+	a.enqueueTransferJob(transferDownload, "下载 "+f.Name(), local, b.termID, transferPayload{
+		Conflict: int(a.transferConflictPolicy()),
+		Download: &transferDownloadPayload{
+			Remote: remote,
+			Local:  local,
+		},
 	})
 }
 

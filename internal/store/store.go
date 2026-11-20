@@ -20,8 +20,10 @@ type Profile struct {
 	Port          int
 	Username      string
 	AuthType      string
+	KeyPath       string
 	GroupID       int64
 	JumpProfileID int64
+	LastUsedAt    int64
 }
 
 type Group struct {
@@ -52,11 +54,37 @@ type TransferRecord struct {
 	Kind      string
 	Label     string
 	Target    string
+	ProfileID int64
+	Server    string
 	Done      int64
 	Total     int64
 	Status    string
 	Err       string
 	CreatedAt int64
+}
+
+type TransferJob struct {
+	ID        int64
+	Kind      string
+	Label     string
+	Target    string
+	ProfileID int64
+	Server    string
+	Status    string
+	Done      int64
+	Total     int64
+	Err       string
+	Conflict  int
+	Payload   string
+	CreatedAt int64
+	UpdatedAt int64
+}
+
+type KnownHost struct {
+	Host        string
+	Port        int
+	Fingerprint string
+	AddedAt     int64
 }
 
 const transferHistoryRetention = 7 * 24 * time.Hour
@@ -161,6 +189,36 @@ var migrations = [][]string{
 		)`,
 		`CREATE INDEX IF NOT EXISTS transfer_history_created ON transfer_history(created_at DESC)`,
 	},
+	{
+		`ALTER TABLE profiles ADD COLUMN key_path TEXT NOT NULL DEFAULT ''`,
+	},
+	{
+		`ALTER TABLE profiles ADD COLUMN last_used_at INTEGER NOT NULL DEFAULT 0`,
+		`CREATE INDEX IF NOT EXISTS profiles_last_used ON profiles(last_used_at DESC)`,
+	},
+	{
+		`CREATE TABLE IF NOT EXISTS transfer_jobs (
+			id         INTEGER PRIMARY KEY,
+			kind       TEXT NOT NULL,
+			label      TEXT NOT NULL,
+			target     TEXT NOT NULL DEFAULT '',
+			profile_id INTEGER NOT NULL DEFAULT 0,
+			status     TEXT NOT NULL,
+			done       INTEGER NOT NULL DEFAULT 0,
+			total      INTEGER NOT NULL DEFAULT 0,
+			err        TEXT NOT NULL DEFAULT '',
+			conflict   INTEGER NOT NULL DEFAULT 0,
+			payload    TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS transfer_jobs_profile ON transfer_jobs(profile_id, id)`,
+	},
+	{
+		`ALTER TABLE transfer_history ADD COLUMN profile_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE transfer_history ADD COLUMN server TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE transfer_jobs ADD COLUMN server TEXT NOT NULL DEFAULT ''`,
+	},
 }
 
 func migrate(ctx context.Context, db *sqlite.DB) error {
@@ -188,8 +246,8 @@ func migrate(ctx context.Context, db *sqlite.DB) error {
 
 func (s *Store) Profiles(ctx context.Context) ([]Profile, error) {
 	rows, err := s.db.Query(ctx, `
-		SELECT id, name, host, port, username, auth_type, group_id, jump_profile_id
-		FROM profiles ORDER BY name`)
+		SELECT id, name, host, port, username, auth_type, key_path, group_id, jump_profile_id, last_used_at
+		FROM profiles ORDER BY last_used_at DESC, name COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -204,8 +262,10 @@ func (s *Store) Profiles(ctx context.Context) ([]Profile, error) {
 			Port:          int(asInt64(v[idx["port"]])),
 			Username:      asString(v[idx["username"]]),
 			AuthType:      asString(v[idx["auth_type"]]),
+			KeyPath:       asString(v[idx["key_path"]]),
 			GroupID:       asInt64(v[idx["group_id"]]),
 			JumpProfileID: asInt64(v[idx["jump_profile_id"]]),
+			LastUsedAt:    asInt64(v[idx["last_used_at"]]),
 		})
 	}
 	return out, nil
@@ -221,9 +281,9 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile) error {
 	}
 	if p.ID == 0 {
 		res, err := s.db.Execute(ctx, `
-			INSERT INTO profiles (name, host, port, username, auth_type, group_id, jump_profile_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			p.Name, p.Host, p.Port, p.Username, p.AuthType, p.GroupID, p.JumpProfileID, now, now)
+			INSERT INTO profiles (name, host, port, username, auth_type, key_path, group_id, jump_profile_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			p.Name, p.Host, p.Port, p.Username, p.AuthType, p.KeyPath, p.GroupID, p.JumpProfileID, now, now)
 		if err != nil {
 			return err
 		}
@@ -232,9 +292,17 @@ func (s *Store) SaveProfile(ctx context.Context, p *Profile) error {
 	}
 
 	_, err := s.db.Execute(ctx, `
-		UPDATE profiles SET name = ?, host = ?, port = ?, username = ?, auth_type = ?, group_id = ?, jump_profile_id = ?, updated_at = ?
+		UPDATE profiles SET name = ?, host = ?, port = ?, username = ?, auth_type = ?, key_path = ?, group_id = ?, jump_profile_id = ?, updated_at = ?
 		WHERE id = ?`,
-		p.Name, p.Host, p.Port, p.Username, p.AuthType, p.GroupID, p.JumpProfileID, now, p.ID)
+		p.Name, p.Host, p.Port, p.Username, p.AuthType, p.KeyPath, p.GroupID, p.JumpProfileID, now, p.ID)
+	return err
+}
+
+func (s *Store) TouchProfile(ctx context.Context, id int64) error {
+	if id == 0 {
+		return nil
+	}
+	_, err := s.db.Execute(ctx, `UPDATE profiles SET last_used_at = ? WHERE id = ?`, time.Now().UnixNano(), id)
 	return err
 }
 
@@ -283,6 +351,7 @@ func (s *Store) DeleteProfile(ctx context.Context, id int64) error {
 		{SQL: `UPDATE profiles SET jump_profile_id = 0 WHERE jump_profile_id = ?`, Args: []any{id}},
 		{SQL: `DELETE FROM port_forwards WHERE profile_id = ?`, Args: []any{id}},
 		{SQL: `DELETE FROM quick_commands WHERE profile_id = ?`, Args: []any{id}},
+		{SQL: `DELETE FROM transfer_jobs WHERE profile_id = ?`, Args: []any{id}},
 		{SQL: `DELETE FROM profiles WHERE id = ?`, Args: []any{id}},
 	})
 	return err
@@ -418,9 +487,9 @@ func (s *Store) AddTransferRecord(ctx context.Context, r *TransferRecord) error 
 	}
 	cutoff := time.Now().Add(-transferHistoryRetention).Unix()
 	results, err := s.db.Transaction(ctx, []sqlite.Statement{
-		{SQL: `INSERT INTO transfer_history (kind, label, target, done, total, status, err, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			Args: []any{r.Kind, r.Label, r.Target, r.Done, r.Total, r.Status, r.Err, r.CreatedAt}},
+		{SQL: `INSERT INTO transfer_history (kind, label, target, profile_id, server, done, total, status, err, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			Args: []any{r.Kind, r.Label, r.Target, r.ProfileID, r.Server, r.Done, r.Total, r.Status, r.Err, r.CreatedAt}},
 		{SQL: `DELETE FROM transfer_history WHERE created_at < ?`, Args: []any{cutoff}},
 		{SQL: `DELETE FROM transfer_history WHERE id NOT IN (
 			SELECT id FROM transfer_history ORDER BY id DESC LIMIT 200
@@ -442,7 +511,7 @@ func (s *Store) TransferHistorySince(ctx context.Context, limit int, since time.
 		limit = 50
 	}
 	rows, err := s.db.Query(ctx, `
-		SELECT id, kind, label, target, done, total, status, err, created_at
+		SELECT id, kind, label, target, profile_id, server, done, total, status, err, created_at
 		FROM transfer_history WHERE created_at >= ? ORDER BY id DESC LIMIT ?`, since.Unix(), limit)
 	if err != nil {
 		return nil, err
@@ -456,6 +525,8 @@ func (s *Store) TransferHistorySince(ctx context.Context, limit int, since time.
 			Kind:      asString(v[idx["kind"]]),
 			Label:     asString(v[idx["label"]]),
 			Target:    asString(v[idx["target"]]),
+			ProfileID: asInt64(v[idx["profile_id"]]),
+			Server:    asString(v[idx["server"]]),
 			Done:      asInt64(v[idx["done"]]),
 			Total:     asInt64(v[idx["total"]]),
 			Status:    asString(v[idx["status"]]),
@@ -477,18 +548,100 @@ func (s *Store) ClearTransferHistory(ctx context.Context) error {
 	return err
 }
 
+func (s *Store) TransferJobs(ctx context.Context) ([]TransferJob, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT id, kind, label, target, profile_id, server, status, done, total, err, conflict, payload, created_at, updated_at
+		FROM transfer_jobs ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	idx := columns(rows.Columns)
+	out := make([]TransferJob, 0, len(rows.Values))
+	for _, v := range rows.Values {
+		out = append(out, TransferJob{
+			ID:        asInt64(v[idx["id"]]),
+			Kind:      asString(v[idx["kind"]]),
+			Label:     asString(v[idx["label"]]),
+			Target:    asString(v[idx["target"]]),
+			ProfileID: asInt64(v[idx["profile_id"]]),
+			Server:    asString(v[idx["server"]]),
+			Status:    asString(v[idx["status"]]),
+			Done:      asInt64(v[idx["done"]]),
+			Total:     asInt64(v[idx["total"]]),
+			Err:       asString(v[idx["err"]]),
+			Conflict:  int(asInt64(v[idx["conflict"]])),
+			Payload:   asString(v[idx["payload"]]),
+			CreatedAt: asInt64(v[idx["created_at"]]),
+			UpdatedAt: asInt64(v[idx["updated_at"]]),
+		})
+	}
+	return out, nil
+}
+
+func (s *Store) SaveTransferJob(ctx context.Context, job *TransferJob) error {
+	now := time.Now().Unix()
+	if job.CreatedAt == 0 {
+		job.CreatedAt = now
+	}
+	job.UpdatedAt = now
+	if job.ID == 0 {
+		res, err := s.db.Execute(ctx, `
+			INSERT INTO transfer_jobs (
+				kind, label, target, profile_id, server, status, done, total, err, conflict, payload, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			job.Kind, job.Label, job.Target, job.ProfileID, job.Server, job.Status, job.Done, job.Total,
+			job.Err, job.Conflict, job.Payload, job.CreatedAt, job.UpdatedAt)
+		if err != nil {
+			return err
+		}
+		job.ID = res.LastInsertID
+		return nil
+	}
+	_, err := s.db.Execute(ctx, `
+		UPDATE transfer_jobs SET
+			kind = ?, label = ?, target = ?, profile_id = ?, server = ?, status = ?, done = ?, total = ?,
+			err = ?, conflict = ?, payload = ?, updated_at = ?
+		WHERE id = ?`,
+		job.Kind, job.Label, job.Target, job.ProfileID, job.Server, job.Status, job.Done, job.Total,
+		job.Err, job.Conflict, job.Payload, job.UpdatedAt, job.ID)
+	return err
+}
+
+func (s *Store) DeleteTransferJob(ctx context.Context, id int64) error {
+	_, err := s.db.Execute(ctx, `DELETE FROM transfer_jobs WHERE id = ?`, id)
+	return err
+}
+
 func (s *Store) KnownHosts(ctx context.Context) (map[string]string, error) {
-	rows, err := s.db.Query(ctx, `SELECT host, port, fingerprint FROM known_hosts`)
+	records, err := s.KnownHostRecords(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(records))
+	for _, rec := range records {
+		out[net.JoinHostPort(rec.Host, strconv.Itoa(rec.Port))] = rec.Fingerprint
+	}
+	return out, nil
+}
+
+func (s *Store) KnownHostRecords(ctx context.Context) ([]KnownHost, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT host, port, fingerprint, added_at
+		FROM known_hosts
+		ORDER BY host COLLATE NOCASE, port`)
 	if err != nil {
 		return nil, err
 	}
 
 	idx := columns(rows.Columns)
-	out := make(map[string]string, len(rows.Values))
+	out := make([]KnownHost, 0, len(rows.Values))
 	for _, v := range rows.Values {
-		host := asString(v[idx["host"]])
-		port := int(asInt64(v[idx["port"]]))
-		out[net.JoinHostPort(host, strconv.Itoa(port))] = asString(v[idx["fingerprint"]])
+		out = append(out, KnownHost{
+			Host:        asString(v[idx["host"]]),
+			Port:        int(asInt64(v[idx["port"]])),
+			Fingerprint: asString(v[idx["fingerprint"]]),
+			AddedAt:     asInt64(v[idx["added_at"]]),
+		})
 	}
 	return out, nil
 }
@@ -499,6 +652,11 @@ func (s *Store) SaveKnownHost(ctx context.Context, host string, port int, finger
 		{SQL: `INSERT INTO known_hosts (host, port, fingerprint, added_at) VALUES (?, ?, ?, ?)`,
 			Args: []any{host, port, fingerprint, time.Now().Unix()}},
 	})
+	return err
+}
+
+func (s *Store) DeleteKnownHost(ctx context.Context, host string, port int) error {
+	_, err := s.db.Execute(ctx, `DELETE FROM known_hosts WHERE host = ? AND port = ?`, host, port)
 	return err
 }
 

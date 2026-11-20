@@ -541,7 +541,10 @@ func (a *App) connectModal(c *ui.Context, t *ui.Theme) {
 
 					ui.Column(c).Gap(5).Children(func() {
 						ui.Text(c, "认证方式").FontSize(9.5).FontWeight(600).TextColor(colMuted)
-						ui.Tabs(c, &a.authMode, "密码", "私钥", "Agent")
+						ui.Tabs(c, &a.authMode, "密码", "私钥", "Agent", "MFA")
+						if a.authMode != authModeKey {
+							a.keyPassphrase = ""
+						}
 						ui.Text(c, authModeHint(a.authMode, editing)).
 							FontSize(8.8).TextColor(colMuted2).LineHeight(1.45)
 					})
@@ -557,6 +560,34 @@ func (a *App) connectModal(c *ui.Context, t *ui.Theme) {
 						})
 					}
 
+					if a.authMode == authModeKey {
+						fieldColumn(c, "私钥文件", func() {
+							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+								ui.TextInput(c, &a.keyPath).Label("私钥文件").
+									Placeholder("留空时尝试 ~/.xu/keys 默认私钥").Grow(1)
+								if ghostAction(c, t, "connect-key-choose", "选择…", iconFile).Clicked() {
+									a.choosePrivateKey()
+								}
+							})
+						})
+						ui.Row(c).Gap(8).Children(func() {
+							if ghostAction(c, t, "connect-key-generate", "生成密钥…", iconPlus).Clicked() {
+								a.generatePrivateKey()
+							}
+							if ghostAction(c, t, "connect-key-info", "查看公钥", iconCopy).Clicked() {
+								a.showKeyInfo()
+							}
+						})
+						fieldColumn(c, "私钥口令", func() {
+							ui.TextInput(c, &a.keyPassphrase).Label("私钥口令").
+								Placeholder("未加密可留空；加密密钥会提示输入").Password()
+						})
+						ui.Text(c, "口令只保留在本次连接的内存中，不会写入 SQLite。").
+							FontSize(8.8).TextColor(colMuted2).LineHeight(1.45)
+						ui.Text(c, "生成新密钥时会使用这里填写的口令；留空则生成未加密私钥。").
+							FontSize(8.8).TextColor(colMuted2).LineHeight(1.45)
+					}
+
 					if editing {
 						ui.Text(c, "修改会立即保存到连接列表").
 							FontSize(9.5).TextColor(colMuted2).NoWrap()
@@ -568,7 +599,7 @@ func (a *App) connectModal(c *ui.Context, t *ui.Theme) {
 						Border(1, colLine).Children(func() {
 						ui.Row(c).Gap(6).AlignItems(ui.Start).Children(func() {
 							iconEl(c, iconShield, 12, colGreen)
-							ui.Text(c, "首次连接会核对主机密钥指纹；密钥变化会立即阻断连接。").
+							ui.Text(c, "首次连接会核对主机密钥指纹；密钥变化时先显示旧值和新值，确认后才更新。").
 								FontSize(9).TextColor(colMuted2).LineHeight(1.45)
 						})
 					})
@@ -613,4 +644,7 @@ func (a *App) connectModal(c *ui.Context, t *ui.Theme) {
 			})
 		})
 	})
+	if !a.formOpen {
+		a.keyPassphrase = ""
+	}
 }

@@ -71,7 +71,7 @@ func (a *App) connectionsPage(c *ui.Context, t *ui.Theme) {
 							return
 						}
 
-						for _, group := range []string{"password", "key", "agent"} {
+						for _, group := range []string{"password", "key", "agent", "mfa"} {
 							var items []store.Profile
 							for _, p := range visible {
 								if authGroup(p.AuthType) == group {
@@ -118,6 +118,8 @@ func authGroup(auth string) string {
 	switch auth {
 	case "key", "agent":
 		return auth
+	case "mfa", "keyboard-interactive":
+		return "mfa"
 	default:
 		return "password"
 	}
@@ -131,6 +133,8 @@ func authLabel(auth string) string {
 		return "私钥登录"
 	case "agent":
 		return "Agent 登录"
+	case "mfa", "keyboard-interactive":
+		return "MFA 登录"
 	default:
 		return "密码登录"
 	}
@@ -149,6 +153,7 @@ func (a *App) connectionsFilterChips(c *ui.Context, t *ui.Theme) {
 		{"password", "密码"},
 		{"key", "私钥"},
 		{"agent", "Agent"},
+		{"mfa", "MFA"},
 	}
 	for _, item := range items {
 		item := item
@@ -302,7 +307,7 @@ func (a *App) connectionPageDetail(c *ui.Context, t *ui.Theme) {
 			})
 			ui.Column(c).Padding(0, 10).Gap(6).Children(func() {
 				ui.Text(c, "主机密钥").FontSize(9).FontWeight(600).TextColor(colMuted2)
-				ui.Text(c, "首次连接时显示 SHA256 指纹，确认后写入 known_hosts。密钥变化会阻断连接。").
+				ui.Text(c, "首次连接时显示 SHA256 指纹，确认后写入 known_hosts。密钥变化时先显示旧值和新值，再次确认后才更新。").
 					FontSize(9.5).TextColor(colMuted2).LineHeight(1.55)
 			})
 			ui.Column(c).Padding(0, 10).Gap(6).Children(func() {

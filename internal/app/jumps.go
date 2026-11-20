@@ -195,6 +195,7 @@ func (a *App) sshProfileForSavedSeen(p store.Profile, seen map[int64]bool) (sshx
 		Username: p.Username,
 		Password: password,
 		AuthType: authType,
+		KeyPath:  p.KeyPath,
 	}
 
 	if p.JumpProfileID != 0 {

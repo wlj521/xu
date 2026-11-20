@@ -197,9 +197,14 @@ func (a *App) connectingTabView(c *ui.Context, t *ui.Theme, tab *appTab) {
 
 	name := profileDisplayName(conn.profile)
 	hostLine := fmt.Sprintf("%s@%s:%d", conn.profile.Username, conn.profile.Host, conn.profile.Port)
+	queued := conn.cancel == nil && conn.err == ""
+	title := "正在连接 " + shortLabel(name, 30) + " …"
+	if queued {
+		title = "等待恢复 " + shortLabel(name, 30) + " …"
+	}
 
 	ui.Column(c).Grow(1).Fill().Background(colTermBg).Padding(18, 20).Gap(5).Children(func() {
-		ui.Text(c, "正在连接 "+shortLabel(name, 30)+" …").FontSize(11.5).
+		ui.Text(c, title).FontSize(11.5).
 			Font("Cascadia Code").FontWeight(600).TextColor(colText).NoWrap()
 		ui.Text(c, hostLine).FontSize(9.8).Font("Cascadia Code").
 			TextColor(colMuted).NoWrap()
@@ -210,6 +215,16 @@ func (a *App) connectingTabView(c *ui.Context, t *ui.Theme, tab *appTab) {
 
 		if conn.err != "" {
 			a.connectingTabError(c, t, tab, conn)
+			return
+		}
+		if queued {
+			ui.Row(c).Gap(7).AlignItems(ui.Center).Margin(9, 0, 0, 0).Children(func() {
+				statusDot(c, colMuted2, 6)
+				ui.Text(c, "前一个会话完成后将自动连接").FontSize(9.8).
+					Font("Cascadia Code").TextColor(colMuted2)
+			})
+			ui.Text(c, "关闭标签页可取消恢复").
+				FontSize(9).Font("Cascadia Code").TextColor(colMuted2).Margin(2, 0, 0, 0)
 			return
 		}
 

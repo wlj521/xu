@@ -119,9 +119,11 @@ func (a *App) activateTabIndex(i int) {
 	a.settingsOpen = false
 	if tab.kind == tabQuickConnect || tab.term == nil {
 		a.activeTerm = -1
+		a.saveWorkspace()
 		return
 	}
 	a.activeTerm = a.termIndex(tab.term)
+	a.saveWorkspace()
 }
 
 // activateTerm keeps the old session-index API: it focuses the tab that
@@ -299,6 +301,8 @@ func (a *App) closeTabIndex(i int) {
 	if i < 0 || i >= len(a.tabs) {
 		return
 	}
+	defer a.startNextWorkspaceConnect()
+	defer a.saveWorkspace()
 	closingActive := i == a.activeTab
 	tab := a.tabs[i]
 	a.tabs = append(a.tabs[:i], a.tabs[i+1:]...)
@@ -439,6 +443,8 @@ func (a *App) duplicateTab(tab *appTab) {
 			a.settingsOpen = false
 			a.autoStartForwards(newTS)
 			a.startMonitorBackground(newTS)
+			a.touchProfile(profileID)
+			a.saveWorkspace()
 			a.status = "已复制标签 · " + title
 		})
 	}()

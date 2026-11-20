@@ -59,7 +59,7 @@ func TestConnectionModalRenders(t *testing.T) {
 
 	for _, want := range []string{
 		"新建 SSH 连接", "名称", "主机", "端口", "用户名",
-		"跳板机", "认证方式", "密码", "私钥", "Agent", "保存", "取消",
+		"跳板机", "认证方式", "密码", "私钥", "Agent", "MFA", "保存", "取消",
 	} {
 		if !tt.HasText(want) {
 			t.Fatalf("missing %q; texts = %q", want, tt.Texts())
@@ -116,7 +116,7 @@ func TestPasswordIsOnlyUsedByPasswordAuth(t *testing.T) {
 	if got := a.passwordForAuth("password"); got != "secret" {
 		t.Fatalf("password auth = %q, want the typed password", got)
 	}
-	for _, authType := range []string{"key", "agent"} {
+	for _, authType := range []string{"key", "agent", "mfa"} {
 		if got := a.passwordForAuth(authType); got != "" {
 			t.Fatalf("%s auth received password %q", authType, got)
 		}

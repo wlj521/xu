@@ -14,6 +14,7 @@ import (
 // hostKeyTestFingerprint is a real SSH SHA256 fingerprint, the shape the modal
 // has to show whole: 50 characters, "SHA256:" and 43 of base64.
 const hostKeyTestFingerprint = "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU"
+const hostKeyOldTestFingerprint = "SHA256:GEZD7P4x2oJp6QvKt3sVYv3xQY7mW6WQhA1rK8zD2uE"
 
 func newHostKeyPrompt() (*App, chan bool) {
 	a := New()
@@ -84,7 +85,7 @@ func TestHostKeyModalRendersFingerprintInFull(t *testing.T) {
 		"10.0.0.12:22",
 		"主机密钥指纹",
 		"如果不是你预期的服务器，请取消。",
-		"确认后会写入 known_hosts；下次密钥变化将直接阻断连接。",
+		"确认后会写入 known_hosts；下次密钥变化会先要求再次确认。",
 		"请与服务器管理员核对指纹",
 		"取消",
 		"信任并连接",
@@ -239,6 +240,43 @@ func TestAskHostKeyWithoutWindowDeclines(t *testing.T) {
 		t.Fatal("the modal rendered without a prompt")
 	}
 	a.answerHostKey(true)
+}
+
+func TestHostKeyModalShowsChangedFingerprint(t *testing.T) {
+	a, ack := newHostKeyPrompt()
+	a.hostKeyOldFingerprint = hostKeyOldTestFingerprint
+
+	tt := hostKeyTester(a)
+	tt.Frame()
+	for _, want := range []string{
+		"主机密钥已变化",
+		"安全警告 · SSH 主机密钥",
+		"旧指纹（已保存）",
+		hostKeyOldTestFingerprint,
+		"新指纹（服务器提供）",
+		hostKeyTestFingerprint,
+		"服务器可能已重装，也可能有人正在拦截连接。请先向服务器管理员核实新指纹。",
+		"确认后会立即用新指纹覆盖旧记录，并继续连接。",
+		"确认更新并连接",
+	} {
+		if !tt.HasText(want) {
+			t.Fatalf("the changed-key modal does not show %q; texts = %q", want, tt.Texts())
+		}
+	}
+	if tt.HasText("首次连接这台服务器") {
+		t.Fatalf("a changed key was described as a first connection; texts = %q", tt.Texts())
+	}
+
+	if err := tt.Click("确认更新并连接"); err != nil {
+		t.Fatalf("click 确认更新并连接: %v", err)
+	}
+	ok, answered := hostKeyAnswer(ack)
+	if !answered || !ok {
+		t.Fatalf("updating the changed key answered %v (answered=%v)", ok, answered)
+	}
+	if a.hostKeyOpen || a.hostKeyOldFingerprint != "" {
+		t.Fatalf("the changed-key prompt was left open: open=%v old=%q", a.hostKeyOpen, a.hostKeyOldFingerprint)
+	}
 }
 
 func TestHostKeyModalOverConnectForm(t *testing.T) {

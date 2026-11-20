@@ -32,8 +32,8 @@ func main() {
 		readme := filepath.Join(keysDir, "README.txt")
 		if _, err := os.Stat(readme); os.IsNotExist(err) {
 			_ = os.WriteFile(readme, []byte(
-				"把 OpenSSH 格式的私钥放在这里：id_ed25519、id_ecdsa 或 id_rsa。\n"+
-					"当前版本不支持在应用内输入私钥口令；带口令的私钥可通过系统 SSH Agent 使用。\n",
+				"连接配置可直接选择任意 OpenSSH 私钥；放在这里的 id_ed25519、id_ecdsa 或 id_rsa 会作为默认回退。\n"+
+					"加密私钥可在连接时填写口令，口令只保留在内存中，不会写入数据库或日志。\n",
 			), 0o600)
 		}
 	}

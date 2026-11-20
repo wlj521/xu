@@ -466,8 +466,10 @@ func (a *App) managerToolbar(c *ui.Context, t *ui.Theme) {
 	ui.Row(c).Height(54).Shrink(0).Padding(0, 16).Gap(8).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
 		qcSearchField(c, "mgr-search", &a.managerFilter, "搜索名称、主机、用户名或分组").Grow(1)
-		if ghostAction(c, t, "mgr-import", "导入", iconDownload).Clicked() {
-			a.importFinalShell()
+		importButton := ghostAction(c, t, "mgr-import", "导入", iconDownload)
+		importButton.Menu(func(m *ui.Menu) { a.backupImportMenu(m) })
+		if ghostAction(c, t, "mgr-export", "导出", iconUpload).Clicked() {
+			a.exportBackup()
 		}
 		if ghostAction(c, t, "mgr-new-group", "新建分组", iconNewFolder).Clicked() {
 			a.openGroupForm(0, "")

@@ -42,6 +42,7 @@ type transferStatus int
 const (
 	transferQueued transferStatus = iota
 	transferRunning
+	transferPaused
 	transferDone
 	transferFailed
 	transferCanceled
@@ -53,6 +54,8 @@ func transferStatusText(status transferStatus) string {
 		return "queued"
 	case transferRunning:
 		return "running"
+	case transferPaused:
+		return "paused"
 	case transferDone:
 		return "done"
 	case transferCanceled:
@@ -68,6 +71,8 @@ func transferStatusFromText(text string) transferStatus {
 		return transferQueued
 	case "running":
 		return transferRunning
+	case "paused":
+		return transferPaused
 	case "done":
 		return transferDone
 	case "canceled":
@@ -91,12 +96,19 @@ type transferTask struct {
 	cancelRequested bool
 	work            func(context.Context, func(int64, int64)) error
 	onDone          func()
-	retry           func()
+	profileID       int64
+	server          string
+	payload         transferPayload
+	jobID           int64
+	restored        bool
+	lastPersist     time.Time
+	createdAt       time.Time
 }
 
 type transferResumeState struct {
 	completed map[string]bool
 	targets   map[string]string
+	onChange  func()
 }
 
 func newTransferResumeState() *transferResumeState {
@@ -112,7 +124,13 @@ func (s *transferResumeState) done(key string) bool {
 
 func (s *transferResumeState) complete(key string) {
 	if s != nil {
+		if s.completed[key] {
+			return
+		}
 		s.completed[key] = true
+		if s.onChange != nil {
+			s.onChange()
+		}
 	}
 }
 
@@ -125,7 +143,46 @@ func (s *transferResumeState) target(key string, resolve func() string) string {
 	}
 	target := resolve()
 	s.targets[key] = target
+	if s.onChange != nil {
+		s.onChange()
+	}
 	return target
+}
+
+type transferResumeSnapshot struct {
+	Completed map[string]bool   `json:"completed,omitempty"`
+	Targets   map[string]string `json:"targets,omitempty"`
+}
+
+func (s *transferResumeState) snapshot() *transferResumeSnapshot {
+	if s == nil {
+		return nil
+	}
+	out := &transferResumeSnapshot{
+		Completed: make(map[string]bool, len(s.completed)),
+		Targets:   make(map[string]string, len(s.targets)),
+	}
+	for key, done := range s.completed {
+		out.Completed[key] = done
+	}
+	for key, target := range s.targets {
+		out.Targets[key] = target
+	}
+	return out
+}
+
+func newTransferResumeStateFrom(snapshot *transferResumeSnapshot) *transferResumeState {
+	state := newTransferResumeState()
+	if snapshot == nil {
+		return state
+	}
+	for key, done := range snapshot.Completed {
+		state.completed[key] = done
+	}
+	for key, target := range snapshot.Targets {
+		state.targets[key] = target
+	}
+	return state
 }
 
 type transferRecord struct {
@@ -133,12 +190,13 @@ type transferRecord struct {
 	Kind      transferKind
 	Label     string
 	Target    string
+	ProfileID int64
+	Server    string
 	Done      int64
 	Total     int64
 	Status    transferStatus
 	Err       string
 	CreatedAt time.Time
-	retry     func()
 }
 
 type transferConflict int
@@ -206,34 +264,6 @@ func (a *App) transferConflictPolicy() transferConflict {
 	}
 }
 
-func (a *App) enqueueTransfer(kind transferKind, label, target string, sessionID int64, work func(context.Context, func(int64, int64)) error, onDone func()) int64 {
-	return a.enqueueTransferFactory(kind, label, target, sessionID, func() func(context.Context, func(int64, int64)) error {
-		return work
-	}, onDone)
-}
-
-func (a *App) enqueueTransferFactory(kind transferKind, label, target string, sessionID int64, factory func() func(context.Context, func(int64, int64)) error, onDone func()) int64 {
-	id := a.nextTransferID
-	a.nextTransferID++
-	task := &transferTask{
-		id:        id,
-		kind:      kind,
-		label:     label,
-		target:    target,
-		sessionID: sessionID,
-		status:    transferQueued,
-		work:      factory(),
-		onDone:    onDone,
-	}
-	task.retry = func() {
-		a.enqueueTransferFactory(kind, label, target, sessionID, factory, onDone)
-	}
-	a.transferTasks = append(a.transferTasks, task)
-	a.fileErr = ""
-	a.pumpTransfers()
-	return id
-}
-
 func (a *App) pumpTransfers() {
 	limit := a.settings.TransferConcurrency
 	if limit < 1 || limit > 4 {
@@ -261,16 +291,32 @@ func (a *App) startTransferTask(task *transferTask) {
 	if task == nil || task.status != transferQueued {
 		return
 	}
+	work := task.work
+	if work == nil {
+		var err error
+		work, err = a.buildTransferWork(task)
+		if err != nil {
+			a.finishTransferTask(task.id, err)
+			return
+		}
+	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	task.cancel = cancel
+	task.cancelRequested = false
 	task.status = transferRunning
+	task.err = ""
+	a.persistTransferTask(task)
 	id := task.id
 	go func() {
-		err := task.work(ctx, func(done, total int64) {
+		err := work(ctx, func(done, total int64) {
 			a.post(func() {
 				if current := a.transferTaskByID(id); current != nil {
 					current.done = done
 					current.total = total
+					if time.Since(current.lastPersist) >= time.Second {
+						current.lastPersist = time.Now()
+						a.persistTransferTask(current)
+					}
 				}
 			})
 		})
@@ -290,35 +336,42 @@ func (a *App) finishTransferTask(id int64, err error) {
 		return
 	}
 	task := a.transferTasks[index]
-	a.transferTasks = append(a.transferTasks[:index], a.transferTasks[index+1:]...)
 	task.cancel = nil
+	task.work = nil
+	task.lastPersist = time.Time{}
 
-	status := transferDone
-	if err != nil {
-		if task.cancelRequested || errors.Is(err, context.Canceled) {
-			status = transferCanceled
-		} else {
-			status = transferFailed
-			task.err = err.Error()
-		}
-	}
-	a.addTransferRecord(task, status)
-
-	switch status {
-	case transferCanceled:
-		a.status = "传输已暂停"
-	case transferFailed:
-		a.status = "传输失败: " + shortLabel(err.Error(), 70)
-	default:
+	if err == nil {
+		a.transferTasks = append(a.transferTasks[:index], a.transferTasks[index+1:]...)
+		task.status = transferDone
+		task.err = ""
+		a.deleteTransferJob(task)
+		a.addTransferRecord(task, transferDone)
 		if task.target != "" {
 			a.status = task.label + "完成 · " + shortLabel(task.target, 70)
 		} else {
 			a.status = task.label + "完成"
 		}
+		a.refreshTransferViews(task)
 		if task.onDone != nil {
 			task.onDone()
 		}
+		a.pumpTransfers()
+		return
 	}
+
+	if task.cancelRequested || errors.Is(err, context.Canceled) {
+		task.status = transferPaused
+		task.err = ""
+		a.status = "传输已暂停"
+		a.addTransferRecord(task, transferPaused)
+	} else {
+		task.status = transferFailed
+		task.err = err.Error()
+		a.status = "传输失败: " + shortLabel(err.Error(), 70)
+		a.addTransferRecord(task, transferFailed)
+	}
+	task.cancelRequested = false
+	a.persistTransferTask(task)
 	a.pumpTransfers()
 }
 
@@ -339,6 +392,7 @@ func (a *App) cancelTransfer(id int64) {
 		if task.status == transferQueued {
 			a.transferTasks = append(a.transferTasks[:i], a.transferTasks[i+1:]...)
 			a.addTransferRecord(task, transferCanceled)
+			a.deleteTransferJob(task)
 			a.pumpTransfers()
 			return
 		}
@@ -357,8 +411,9 @@ func (a *App) cancelTransfersForSession(sessionID int64) {
 			continue
 		}
 		if task.status == transferQueued {
-			a.transferTasks = append(a.transferTasks[:i], a.transferTasks[i+1:]...)
-			a.addTransferRecord(task, transferCanceled)
+			task.status = transferPaused
+			task.err = "SSH 会话已断开"
+			a.persistTransferTask(task)
 			continue
 		}
 		if task.cancel != nil {
@@ -373,14 +428,13 @@ func (a *App) addTransferRecord(task *transferTask, status transferStatus) {
 		Kind:      task.kind,
 		Label:     task.label,
 		Target:    task.target,
+		ProfileID: task.profileID,
+		Server:    task.server,
 		Done:      task.done,
 		Total:     task.total,
 		Status:    status,
 		Err:       task.err,
 		CreatedAt: time.Now(),
-	}
-	if status == transferFailed || status == transferCanceled {
-		rec.retry = task.retry
 	}
 	a.transferLog = append([]transferRecord{rec}, a.transferLog...)
 	if len(a.transferLog) > 100 {
@@ -397,6 +451,8 @@ func (a *App) persistTransferRecord(rec transferRecord) {
 		Kind:      rec.Kind.text(),
 		Label:     rec.Label,
 		Target:    rec.Target,
+		ProfileID: rec.ProfileID,
+		Server:    rec.Server,
 		Done:      rec.Done,
 		Total:     rec.Total,
 		Status:    transferStatusText(rec.Status),
@@ -424,11 +480,17 @@ func (a *App) loadTransferHistory() {
 		if rec.Kind == "download" {
 			kind = transferDownload
 		}
+		server := rec.Server
+		if server == "" && rec.ProfileID != 0 {
+			server = a.transferServerLabel(rec.ProfileID)
+		}
 		records = append(records, transferRecord{
 			ID:        rec.ID,
 			Kind:      kind,
 			Label:     rec.Label,
 			Target:    rec.Target,
+			ProfileID: rec.ProfileID,
+			Server:    server,
 			Done:      rec.Done,
 			Total:     rec.Total,
 			Status:    transferStatusFromText(rec.Status),
@@ -444,20 +506,6 @@ func (a *App) clearTransferHistory() {
 	if a.store != nil {
 		_ = a.store.ClearTransferHistory(a.ctx)
 	}
-}
-
-func (a *App) retryTransfer(index int) {
-	if index < 0 || index >= len(a.transferLog) {
-		return
-	}
-	rec := a.transferLog[index]
-	if rec.retry == nil {
-		a.status = "重启前的传输记录无法重试"
-		return
-	}
-	a.transferLog = append(a.transferLog[:index], a.transferLog[index+1:]...)
-	rec.retry()
-	a.status = "已重新加入传输队列"
 }
 
 func (a *App) transferQueueStats() (active, queued int, done, total int64) {

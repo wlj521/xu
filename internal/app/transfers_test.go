@@ -289,18 +289,25 @@ func TestTransferPanelShowsQueueAndRetry(t *testing.T) {
 	a.bottomFileTab = int(dockTransfers)
 	a.transferTasks = []*transferTask{{
 		id: 1, kind: transferUpload, label: "上传 build", target: "/srv/build",
-		status: transferRunning, done: 4, total: 10,
+		status: transferRunning, done: 4, total: 10, server: "prod · root@prod:22",
+	}, {
+		id: 2, kind: transferDownload, label: "下载 app.log", target: "C:\\tmp\\app.log",
+		status: transferFailed, err: "network", done: 2, total: 10, server: "db · ops@db:2222",
+		work: func(context.Context, func(int64, int64)) error {
+			return nil
+		},
 	}}
-	retried := false
 	a.transferLog = []transferRecord{{
 		Kind: transferDownload, Label: "下载 app.log", Target: "C:\\tmp\\app.log",
-		Status: transferFailed, Err: "network", Done: 2, Total: 10,
-		retry: func() { retried = true },
+		Status: transferFailed, Err: "network", Done: 2, Total: 10, Server: "prod · root@prod:22",
 	}}
 
 	tt := ui.NewTester(a.View, 1440, 900)
 	tt.Frame()
-	for _, want := range []string{"传输队列", "1 运行 · 0 等待", "上传 build", "历史记录", "最近 7 天", "重试"} {
+	for _, want := range []string{
+		"传输队列", "1 运行 · 0 等待", "1 待继续", "上传 build",
+		"prod · root@prod:22", "db · ops@db:2222", "历史记录", "最近 7 天", "重试",
+	} {
 		if !tt.HasText(want) {
 			t.Fatalf("transfer panel missing %q; texts = %q", want, tt.Texts())
 		}
@@ -308,7 +315,7 @@ func TestTransferPanelShowsQueueAndRetry(t *testing.T) {
 	if err := tt.Click("重试"); err != nil {
 		t.Fatal(err)
 	}
-	if !retried {
-		t.Fatal("retry did not invoke the task factory")
+	if got := a.transferTaskByID(2); got == nil || got.status != transferRunning {
+		t.Fatalf("retry did not resume the failed task: %+v", got)
 	}
 }

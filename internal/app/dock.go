@@ -253,9 +253,18 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 			}
 
 			active, queued, _, _ := a.transferQueueStats()
+			waiting := 0
+			for _, task := range a.transferTasks {
+				if task.status == transferPaused || task.status == transferFailed {
+					waiting++
+				}
+			}
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "传输队列").FontSize(10).FontWeight(600).TextColor(colMuted)
 				miniTag(c, fmt.Sprintf("%d 运行 · %d 等待", active, queued), condColor(active > 0, colCyan, colMuted2))
+				if waiting > 0 {
+					miniTag(c, fmt.Sprintf("%d 待继续", waiting), colAmber)
+				}
 				ui.Text(c, "").Grow(1)
 			})
 
@@ -268,11 +277,15 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 				if task.total > 0 {
 					pct = int(task.done * 100 / task.total)
 				}
-				status := "等待中"
+				status := transferStatusLabel(task.status)
 				statusColor := colMuted
-				if task.status == transferRunning {
-					status = "传输中"
+				switch task.status {
+				case transferRunning:
 					statusColor = colCyan
+				case transferPaused:
+					statusColor = colAmber
+				case transferFailed:
+					statusColor = colRed
 				}
 				ui.Box(c).FillWidth().Padding(9, 10).Radius(7).Background(colPanel2.Alpha(0.55)).
 					Border(1, colLine).Children(func() {
@@ -285,19 +298,49 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 								ui.Text(c, fmt.Sprintf("%s · %d%%", status, pct)).FontSize(9).
 									Font("Cascadia Code").TextColor(statusColor)
 							})
+							if task.server != "" {
+								ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+									iconEl(c, iconServer, 10, colViolet)
+									ui.Text(c, shortLabel(task.server, 72)).FontSize(8.3).
+										TextColor(colMuted).NoWrap()
+								})
+							}
 							if task.target != "" {
 								ui.Text(c, transferTargetLabel(task.kind, shortLabel(task.target, 86))).FontSize(8.3).
 									Font("Cascadia Code").TextColor(colMuted2).NoWrap()
 							}
+							if task.err != "" {
+								errColor := colRed
+								if task.status == transferPaused {
+									errColor = colAmber
+								}
+								ui.Text(c, shortLabel(task.err, 90)).FontSize(8.2).TextColor(errColor).NoWrap()
+							}
 							ui.Progress(c, float64(pct)/100).FillWidth().Height(3)
 						})
-						label := "暂停"
-						if task.status == transferQueued {
-							label = "移除"
-						}
-						if ghostAction(c, t, fmt.Sprintf("transfer-cancel-%d", task.id), label, nil).Clicked() {
-							a.cancelTransfer(task.id)
-						}
+						ui.Row(c).Gap(4).Children(func() {
+							switch task.status {
+							case transferRunning:
+								if ghostAction(c, t, fmt.Sprintf("transfer-pause-%d", task.id), "暂停", nil).Clicked() {
+									a.cancelTransfer(task.id)
+								}
+							case transferQueued:
+								if ghostAction(c, t, fmt.Sprintf("transfer-remove-%d", task.id), "移除", nil).Clicked() {
+									a.removeTransfer(task.id)
+								}
+							case transferPaused, transferFailed:
+								label := "继续"
+								if task.status == transferFailed {
+									label = "重试"
+								}
+								if ghostAction(c, t, fmt.Sprintf("transfer-resume-%d", task.id), label, iconRefresh).Clicked() {
+									a.resumeTransfer(task.id)
+								}
+								if ghostAction(c, t, fmt.Sprintf("transfer-remove-%d", task.id), "移除", nil).Clicked() {
+									a.removeTransfer(task.id)
+								}
+							}
+						})
 					})
 				})
 			}
@@ -313,16 +356,16 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 					a.clearTransferHistory()
 				}
 			})
-			for i, rec := range a.transferLog {
+			for _, rec := range a.transferLog {
 				rec := rec
 				status := "完成"
 				color := colGreen
 				switch rec.Status {
+				case transferPaused:
+					status = "已暂停"
+					color = colMuted
 				case transferCanceled:
 					status = "已取消"
-					if rec.retry != nil {
-						status = "已暂停"
-					}
 					color = colMuted
 				case transferFailed:
 					status = "失败"
@@ -332,6 +375,12 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 					iconEl(c, transferIcon(rec.Label), 12, color)
 					ui.Column(c).Grow(1).Gap(1).Children(func() {
 						ui.Text(c, shortLabel(rec.Label, 44)).FontSize(9.5).TextColor(colMuted).NoWrap()
+						if rec.Server != "" {
+							ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+								iconEl(c, iconServer, 9, colViolet)
+								ui.Text(c, shortLabel(rec.Server, 72)).FontSize(8).TextColor(colMuted).NoWrap()
+							})
+						}
 						if rec.Target != "" {
 							ui.Text(c, transferTargetLabel(rec.Kind, shortLabel(rec.Target, 86))).FontSize(8.2).
 								Font("Cascadia Code").TextColor(colMuted2).NoWrap()
@@ -349,16 +398,6 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 							Font("Cascadia Code").TextColor(colMuted2).NoWrap()
 					}
 					ui.Text(c, status).FontSize(8.5).TextColor(color).NoWrap()
-					if rec.retry != nil {
-						label := "重试"
-						if rec.Status == transferCanceled {
-							label = "继续"
-						}
-						if ghostAction(c, t, fmt.Sprintf("transfer-retry-%d", i), label, iconRefresh).Clicked() {
-							a.retryTransfer(i)
-						}
-					}
-					_ = i
 				})
 			}
 		})

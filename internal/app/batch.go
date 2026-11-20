@@ -320,6 +320,7 @@ func (a *App) runBatchOne(ctx context.Context, sp sshx.Profile, setupErr error, 
 		return "", setupErr
 	}
 
+	sp = a.attachAuthCallbacks(sp)
 	client, err := sshx.Dial(ctx, sp, a.trustHost)
 	if err != nil {
 		var hk *sshx.HostKeyError

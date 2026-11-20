@@ -63,11 +63,48 @@ type App struct {
 	authFilter       string
 	connPageSel      int64
 
+	// Server tabs from the previous run, restored after the window exists.
+	// The queue serialises their dials because one UI owns connect progress.
+	workspaceLoaded         bool
+	workspaceRestorePending bool
+	workspaceRestoring      bool
+	workspace               workspaceState
+	workspaceQueue          []int64
+
+	// Connection/settings backup import preview.
+	backupOpen            bool
+	backupPath            string
+	backupSource          string
+	backupPreview         xuBackup
+	backupConflictPick    string
+	backupIncludeSettings bool
+	backupWarnings        []string
+
 	host     string
 	port     string
 	username string
 	password string
 	authMode int
+	keyPath  string
+	// keyPassphrase is intentionally memory-only: it is never stored in the
+	// session database or the system credential store.
+	keyPassphrase string
+
+	// Public-key details shown after selecting or generating a key.
+	keyInfoOpen        bool
+	keyInfoPath        string
+	keyInfoPublic      string
+	keyInfoFingerprint string
+
+	// Keyboard-interactive/MFA and encrypted-key prompts, answered while the
+	// SSH handshake waits on a background goroutine.
+	authPromptOpen    bool
+	authPromptHost    string
+	authPromptTitle   string
+	authPromptMessage string
+	authPromptFields  []authPromptField
+	authPromptAck     chan authPromptResult
+	authPromptErr     string
 
 	connecting          bool
 	connectingProfileID int64
@@ -116,10 +153,17 @@ type App struct {
 
 	// Host key confirmation, asked from a background dial and answered by
 	// the in-app modal instead of a native message box.
-	hostKeyOpen        bool
-	hostKeyHost        string
-	hostKeyFingerprint string
-	hostKeyAck         chan bool
+	hostKeyOpen           bool
+	hostKeyHost           string
+	hostKeyOldFingerprint string
+	hostKeyFingerprint    string
+	hostKeyAck            chan bool
+
+	// Saved SSH host keys and their management dialog. The live trust map is
+	// separate because SSH handshakes read it from background goroutines.
+	knownHostsOpen bool
+	knownHosts     []store.KnownHost
+	knownHostsErr  string
 
 	trustMu sync.Mutex
 	trusted map[string]string
@@ -279,7 +323,10 @@ func New() *App {
 	return a
 }
 
-func (a *App) Attach(w *mygo.Window) { a.win = w }
+func (a *App) Attach(w *mygo.Window) {
+	a.win = w
+	a.restoreWorkspaceIfPending()
+}
 
 func (a *App) SetStatus(msg string) { a.status = msg }
 
@@ -294,17 +341,12 @@ func (a *App) SetStore(st *store.Store) {
 	a.refreshProfiles()
 	a.loadQuickCommands()
 	a.loadTransferHistory()
-
-	hosts, err := st.KnownHosts(a.ctx)
-	if err != nil {
-		a.status = "读取主机密钥失败: " + err.Error()
-		return
+	a.loadTransferJobs()
+	a.loadKnownHosts()
+	a.loadWorkspace()
+	if a.win != nil {
+		a.restoreWorkspaceIfPending()
 	}
-	a.trustMu.Lock()
-	for host, fp := range hosts {
-		a.trusted[host] = fp
-	}
-	a.trustMu.Unlock()
 }
 
 func (a *App) post(fn func()) {
@@ -315,6 +357,8 @@ func (a *App) post(fn func()) {
 }
 
 func (a *App) Close() {
+	a.pauseTransfersForShutdown()
+	a.saveWorkspace()
 	a.stop()
 	if a.batchCancel != nil {
 		a.batchCancel()
@@ -395,6 +439,18 @@ func (a *App) View(c *ui.Context) {
 		}
 		if a.settingsOpen {
 			a.settingsModal(c, t)
+		}
+		if a.knownHostsOpen {
+			a.knownHostsModal(c, t)
+		}
+		if a.authPromptOpen {
+			a.authPromptModal(c, t)
+		}
+		if a.keyInfoOpen {
+			a.keyInfoModal(c, t)
+		}
+		if a.backupOpen {
+			a.backupModal(c, t)
 		}
 		if a.logRulesOpen {
 			a.logRulesModal(c, t)
@@ -501,11 +557,20 @@ func (a *App) formProfile() (sshx.Profile, string, error) {
 	if name == "" {
 		name = user + "@" + host
 	}
+	authMode := a.authMode
+	keyPath := ""
+	keyPassphrase := ""
+	if authTypeForMode(authMode) == sshx.AuthKey {
+		keyPath = strings.TrimSpace(a.keyPath)
+		keyPassphrase = a.keyPassphrase
+	}
 	return sshx.Profile{
-		Host:     host,
-		Port:     port,
-		Username: user,
-		AuthType: authTypeForMode(a.authMode),
+		Host:          host,
+		Port:          port,
+		Username:      user,
+		AuthType:      authTypeForMode(authMode),
+		KeyPath:       keyPath,
+		KeyPassphrase: keyPassphrase,
 	}, name, nil
 }
 
@@ -588,6 +653,7 @@ func (a *App) doConnect(ctx context.Context, cancel context.CancelFunc, p sshx.P
 
 	fail := func(msg string) {
 		a.post(func() {
+			defer a.startNextWorkspaceConnect()
 			a.stopConnectTimer()
 			a.connecting = false
 			a.connectingProfileID = 0
@@ -629,6 +695,9 @@ func (a *App) doConnect(ctx context.Context, cancel context.CancelFunc, p sshx.P
 		return
 	}
 
+	// The handshake already signed with the key; do not keep the passphrase
+	// in the session profile or any UI state afterwards.
+	p.KeyPassphrase = ""
 	ts, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay(), a.logHL)
 	if err != nil {
 		client.Close()
@@ -642,6 +711,7 @@ func (a *App) doConnect(ctx context.Context, cancel context.CancelFunc, p sshx.P
 	}
 
 	a.post(func() {
+		defer a.startNextWorkspaceConnect()
 		// front tells whether the finished session is on the tab the user is
 		// looking at: a dial that finishes in the background must not steal
 		// focus or reset the front tab's layout.
@@ -680,13 +750,17 @@ func (a *App) doConnect(ctx context.Context, cancel context.CancelFunc, p sshx.P
 		a.connectingProfileID = 0
 		a.pendingQuickTab = 0
 		a.password = ""
+		a.keyPassphrase = ""
 		a.connectErr = ""
 		a.hostKeyHost = ""
+		a.hostKeyOldFingerprint = ""
 		a.hostKeyFingerprint = ""
 		a.saveCurrentProfile(p)
 		ts.profileID = a.profileID
+		a.touchProfile(ts.profileID)
 		a.autoStartForwards(ts)
 		a.startMonitorBackground(ts)
+		a.saveWorkspace()
 
 		if front {
 			a.formOpen = false
@@ -714,6 +788,12 @@ func (a *App) trustHost(host, fingerprint string) bool {
 	return a.trusted[host] == fingerprint
 }
 
+func (a *App) knownHostFingerprint(host string) string {
+	a.trustMu.Lock()
+	defer a.trustMu.Unlock()
+	return a.trusted[host]
+}
+
 func (a *App) confirmHostKey(ctx context.Context, hk *sshx.HostKeyError) bool {
 	return a.askHostKey(ctx, hk)
 }
@@ -730,7 +810,10 @@ func (a *App) saveKnownHost(hk *sshx.HostKeyError) {
 	port, _ := strconv.Atoi(portStr)
 	if err := a.store.SaveKnownHost(a.ctx, host, port, hk.Fingerprint); err != nil {
 		a.status = "保存主机密钥失败: " + err.Error()
+		a.knownHostsErr = "保存主机密钥失败: " + err.Error()
+		return
 	}
+	a.refreshKnownHosts()
 }
 
 func (a *App) saveCurrentProfile(p sshx.Profile) {
@@ -759,6 +842,7 @@ func (a *App) saveCurrentProfile(p sshx.Profile) {
 		Port:          p.Port,
 		Username:      p.Username,
 		AuthType:      authType,
+		KeyPath:       p.KeyPath,
 		GroupID:       a.groupIDByName(a.groupChoice),
 		JumpProfileID: jumpID,
 	}
@@ -809,7 +893,9 @@ func (a *App) applyProfile(p store.Profile) {
 	a.port = strconv.Itoa(p.Port)
 	a.username = p.Username
 	a.password = ""
+	a.keyPassphrase = ""
 	a.authMode = authModeForType(p.AuthType)
+	a.keyPath = p.KeyPath
 	a.groupChoice = a.groupNameByID(p.GroupID)
 	a.jumpChoice = a.jumpChoiceForID(p.JumpProfileID)
 	a.ensureJumpChoice()
@@ -881,6 +967,7 @@ func (a *App) saveProfileForm() {
 		Port:          p.Port,
 		Username:      p.Username,
 		AuthType:      authType,
+		KeyPath:       p.KeyPath,
 		GroupID:       a.groupIDByName(a.groupChoice),
 		JumpProfileID: jumpID,
 	}
@@ -897,6 +984,7 @@ func (a *App) saveProfileForm() {
 	}
 	a.refreshProfiles()
 	a.connectErr = ""
+	a.keyPassphrase = ""
 	a.formOpen = false
 	a.status = "已保存连接 " + prof.Name
 }
@@ -957,6 +1045,8 @@ func (a *App) resetForm() {
 	a.port = "22"
 	a.username = ""
 	a.password = ""
+	a.keyPath = ""
+	a.keyPassphrase = ""
 	a.authMode = authModePassword
 	a.connectErr = ""
 	a.groupChoice = "未分组"
@@ -974,6 +1064,17 @@ func (a *App) refreshProfiles() {
 	}
 	a.profiles = profs
 	a.ensureJumpChoice()
+}
+
+func (a *App) touchProfile(id int64) {
+	if a.store == nil || id == 0 {
+		return
+	}
+	if err := a.store.TouchProfile(a.ctx, id); err != nil {
+		a.status = "更新最近使用时间失败: " + err.Error()
+		return
+	}
+	a.refreshProfiles()
 }
 
 // closeTerm closes the tab of the i-th session. Tabs close at once, like the

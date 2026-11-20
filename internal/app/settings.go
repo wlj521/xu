@@ -26,6 +26,7 @@ type appSettings struct {
 	CopyOnSelect        bool        // selection copies to the clipboard
 	FindHighlight       bool        // terminal search highlights matches
 	AutoReconnect       bool        // reconnects dropped sessions
+	RestoreWorkspace    bool        // reopens the previous server tabs
 	TransferConcurrency int         // concurrent transfer tasks
 	TransferConflict    int         // 0 overwrite, 1 skip, 2 rename
 	LogHighlight        bool        // colorize log lines in SSH terminals
@@ -38,6 +39,7 @@ func defaultSettings() appSettings {
 	return appSettings{
 		FontSize: 13, ScrollbackMB: 10, Theme: 1,
 		Accent: defaultAccent, CopyOnSelect: true, FindHighlight: true, AutoReconnect: true,
+		RestoreWorkspace:    true,
 		TransferConcurrency: 2, TransferConflict: int(transferConflictOverwrite),
 		LogHighlight: true, LogAnchorOnly: true, LogRules: defaultLogRules(),
 	}
@@ -98,6 +100,7 @@ func (a *App) openSettings() {
 	a.settingsFontPick = fontChoiceForFamily(a.settings.FontFamily)
 	a.settingsFontSizeF = float64(a.settings.FontSize)
 	a.settingsScrollPick = fmt.Sprintf("%d MB", a.settings.ScrollbackMB)
+	a.refreshKnownHosts()
 	a.reloadSchemes()
 	a.schemes.query = ""
 	a.schemes.list.ScrollTo(0, ui.Start)
@@ -113,6 +116,7 @@ func (a *App) openSettings() {
 
 func (a *App) closeSettings() {
 	a.settingsOpen = false
+	a.knownHostsOpen = false
 	a.logRulesOpen = false
 }
 
@@ -137,7 +141,7 @@ func (a *App) settingsModal(c *ui.Context, t *ui.Theme) {
 		"深色与浅色拥有独立的表面层级与终端配色，切换会立即生效。",
 		"字号与字体立即作用于已打开的终端，回滚缓冲对新会话生效。",
 		"内置 Ghostty 配色，可搜索、预览并立即应用到已打开的终端。",
-		"同一主机的终端、SFTP 与监控共用一个 SSH 连接。",
+		"同一主机的终端、SFTP 与监控共用一个 SSH 连接；工作区可在启动时恢复。",
 		"常用操作的键盘快捷键。",
 		"Xu 是一个不依赖 WebView 的原生 SSH 工作台。",
 	}
@@ -250,7 +254,7 @@ func (a *App) settingsView(c *ui.Context, t *ui.Theme) {
 		"主题与面板布局",
 		"字体、字号与回滚缓冲",
 		"终端配色、预览与主题文件",
-		"连接保活、认证和主机密钥",
+		"连接保活、认证、主机密钥与工作区",
 		"常用操作的键盘快捷键",
 		"版本、数据目录与项目信息",
 	}
@@ -709,13 +713,20 @@ func (a *App) settingsConnection(c *ui.Context, t *ui.Theme) {
 		settingsRow(c, "断线自动重连", "网络恢复后自动恢复终端与 SFTP 会话。", func() {
 			ui.Switch(c, &a.settings.AutoReconnect)
 		})
+		settingsRow(c, "恢复上次工作区", "启动时按原顺序重新打开服务器标签，并自动启动标记为自动的端口转发。", func() {
+			ui.Switch(c, &a.settings.RestoreWorkspace)
+		})
 	})
 
 	settingsGroup(c, "安全", false, func() {
 		settingsKV(c, "密码保存", "系统钥匙串")
 		settingsKV(c, "数据库明文", "不保存")
-		settingsKV(c, "主机密钥", "首次核对 · 变化阻断")
-		settingsNote(c, iconShield, "私钥从 ~/.xu/keys 读取：id_ed25519、id_ecdsa、id_rsa。")
+		settingsRow(c, "主机密钥", fmt.Sprintf("%d 个已保存；可查看完整指纹或删除，删除后下次连接会重新核对。", len(a.knownHosts)), func() {
+			if ghostAction(c, t, "settings-known-hosts", "管理", iconShield).Clicked() {
+				a.openKnownHosts()
+			}
+		})
+		settingsNote(c, iconShield, "私钥可选择任意路径；加密私钥的口令只停留在内存中，不写入数据库或日志。")
 	})
 
 	settingsGroup(c, "文件传输", false, func() {
@@ -726,6 +737,20 @@ func (a *App) settingsConnection(c *ui.Context, t *ui.Theme) {
 			ui.Select(c, &a.transferConflictPick, []string{"覆盖", "跳过", "重命名"}).Width(110)
 		})
 		settingsKV(c, "历史保留", "最近 7 天")
+	})
+
+	settingsGroup(c, "备份与迁移", false, func() {
+		settingsRow(c, "连接与设置备份", "导出连接、分组、快捷命令、转发和常规设置，不包含密码、私钥内容或 known_hosts。", func() {
+			ui.Row(c).Gap(6).Children(func() {
+				if ghostAction(c, t, "settings-backup-import", "导入…", iconDownload).Clicked() {
+					a.openBackupImporter()
+				}
+				if ghostAction(c, t, "settings-backup-export", "导出…", iconUpload).Clicked() {
+					a.exportBackup()
+				}
+			})
+		})
+		settingsNote(c, iconShield, "支持 Xu JSON 备份与标准 OpenSSH config；导入前可选择跳过、覆盖或重命名冲突连接。")
 	})
 }
 
@@ -937,6 +962,9 @@ func (a *App) loadSettings() {
 	if values["connection.auto_reconnect"] == "0" {
 		a.settings.AutoReconnect = false
 	}
+	if values["workspace.restore"] == "0" {
+		a.settings.RestoreWorkspace = false
+	}
 	if v := values["transfer.concurrency"]; v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 4 {
 			a.settings.TransferConcurrency = n
@@ -987,6 +1015,7 @@ func (a *App) saveSettings() {
 			"terminal.copy_on_select":   boolText(a.settings.CopyOnSelect),
 			"terminal.find_highlight":   boolText(a.settings.FindHighlight),
 			"connection.auto_reconnect": boolText(a.settings.AutoReconnect),
+			"workspace.restore":         boolText(a.settings.RestoreWorkspace),
 			"transfer.concurrency":      strconv.Itoa(a.settings.TransferConcurrency),
 			"transfer.conflict":         strconv.Itoa(a.settings.TransferConflict),
 		}

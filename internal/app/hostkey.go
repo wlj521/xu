@@ -82,9 +82,11 @@ func (a *App) askHostKey(ctx context.Context, hk *sshx.HostKeyError) bool {
 		return false
 	}
 
+	oldFingerprint := a.knownHostFingerprint(hk.Host)
 	ack := make(chan bool, 1)
 	a.post(func() {
 		a.hostKeyHost = hk.Host
+		a.hostKeyOldFingerprint = oldFingerprint
 		a.hostKeyFingerprint = hk.Fingerprint
 		a.hostKeyAck = ack
 		a.hostKeyOpen = true
@@ -99,6 +101,7 @@ func (a *App) askHostKey(ctx context.Context, hk *sshx.HostKeyError) bool {
 		a.hostKeyAck = nil
 		a.hostKeyOpen = false
 		a.hostKeyHost = ""
+		a.hostKeyOldFingerprint = ""
 		a.hostKeyFingerprint = ""
 	})
 
@@ -125,6 +128,9 @@ func (a *App) answerHostKey(ok bool) {
 	}
 	a.hostKeyAck = nil
 	a.hostKeyOpen = false
+	a.hostKeyHost = ""
+	a.hostKeyOldFingerprint = ""
+	a.hostKeyFingerprint = ""
 	select {
 	case ack <- ok:
 	default:
@@ -165,6 +171,12 @@ func (a *App) hostKeyModal(c *ui.Context, t *ui.Theme) {
 }
 
 func (a *App) hostKeyHeader(c *ui.Context) {
+	title := "首次连接这台服务器"
+	sub := "主机密钥校验 · SSH"
+	if a.hostKeyOldFingerprint != "" {
+		title = "主机密钥已变化"
+		sub = "安全警告 · SSH 主机密钥"
+	}
 	ui.Row(c).Height(64).Shrink(0).Padding(0, 18).Gap(11).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(colLine).Children(func() {
 		ui.Box(c).Size(30, 30).Radius(8).
@@ -172,8 +184,8 @@ func (a *App) hostKeyHeader(c *ui.Context) {
 			iconEl(c, hostKeyWarnIcon, 15, colAmber)
 		})
 		ui.Column(c).Grow(1).Gap(2).Children(func() {
-			ui.Text(c, "首次连接这台服务器").FontSize(14.5).FontWeight(650)
-			ui.Text(c, "主机密钥校验 · SSH").FontSize(9.5).TextColor(colMuted).NoWrap()
+			ui.Text(c, title).FontSize(14.5).FontWeight(650)
+			ui.Text(c, sub).FontSize(9.5).TextColor(colMuted).NoWrap()
 		})
 	})
 }
@@ -185,41 +197,72 @@ func (a *App) hostKeyBody(c *ui.Context, fingerprint string) {
 				Font("Cascadia Code").TextColor(colText)
 		})
 
-		fieldColumn(c, "主机密钥指纹", func() {
-			ui.Box(c).FillWidth().Padding(10, 12).Radius(8).
-				Background(a.hostKeyFieldColor()).Border(1, colLine).Children(func() {
-				ui.Text(c, fingerprint).FontSize(12).Font("Cascadia Code").
-					LineHeight(1.6).TextColor(colText2).Selectable()
-			})
-		})
+		if old := wrapFingerprint(a.hostKeyOldFingerprint); old != "" {
+			a.hostKeyFingerprintField(c, "旧指纹（已保存）", old)
+			a.hostKeyFingerprintField(c, "新指纹（服务器提供）", fingerprint)
+		} else {
+			a.hostKeyFingerprintField(c, "主机密钥指纹", fingerprint)
+		}
 
 		ui.Box(c).FillWidth().Padding(9, 10).Radius(7).
 			Background(colAmber.Alpha(0.08)).Border(1, colAmber.Alpha(0.22)).Children(func() {
 			ui.Row(c).Gap(7).AlignItems(ui.Start).Children(func() {
 				iconEl(c, hostKeyWarnIcon, 12, colAmber)
-				ui.Text(c, "如果不是你预期的服务器，请取消。").
+				warning := "如果不是你预期的服务器，请取消。"
+				if a.hostKeyOldFingerprint != "" {
+					warning = "服务器可能已重装，也可能有人正在拦截连接。请先向服务器管理员核实新指纹。"
+				}
+				ui.Text(c, warning).
 					FontSize(10).TextColor(colAmber).LineHeight(1.4)
 			})
 		})
 
-		ui.Row(c).Gap(7).AlignItems(ui.Start).Children(func() {
-			iconEl(c, iconShield, 12, colGreen)
-			ui.Text(c, "确认后会写入 known_hosts；下次密钥变化将直接阻断连接。").
-				FontSize(9.5).TextColor(colMuted).LineHeight(1.45)
+		if a.hostKeyOldFingerprint != "" {
+			ui.Row(c).Gap(7).AlignItems(ui.Start).Children(func() {
+				iconEl(c, iconShield, 12, colAmber)
+				ui.Text(c, "确认后会立即用新指纹覆盖旧记录，并继续连接。").
+					FontSize(9.5).TextColor(colMuted).LineHeight(1.45)
+			})
+		} else {
+			ui.Row(c).Gap(7).AlignItems(ui.Start).Children(func() {
+				iconEl(c, iconShield, 12, colGreen)
+				ui.Text(c, "确认后会写入 known_hosts；下次密钥变化会先要求再次确认。").
+					FontSize(9.5).TextColor(colMuted).LineHeight(1.45)
+			})
+		}
+	})
+}
+
+func (a *App) hostKeyFingerprintField(c *ui.Context, label, fingerprint string) {
+	fieldColumn(c, label, func() {
+		ui.Box(c).FillWidth().Padding(10, 12).Radius(8).
+			Background(a.hostKeyFieldColor()).Border(1, colLine).Children(func() {
+			ui.Text(c, fingerprint).FontSize(12).Font("Cascadia Code").
+				LineHeight(1.6).TextColor(colText2).Selectable()
 		})
 	})
 }
 
 func (a *App) hostKeyFooter(c *ui.Context, t *ui.Theme) {
+	action := "信任并连接"
+	footnote := "请与服务器管理员核对指纹"
+	if a.hostKeyOldFingerprint != "" {
+		action = "确认更新并连接"
+		footnote = "仅在确认服务器密钥确实更换后更新"
+	}
+	iconColor := colGreen
+	if a.hostKeyOldFingerprint != "" {
+		iconColor = colAmber
+	}
 	ui.Row(c).Height(56).Shrink(0).Padding(0, 18).Gap(8).AlignItems(ui.Center).
 		BorderWidth(1, 0, 0, 0).BorderColor(colLine).Children(func() {
-		iconEl(c, iconShield, 11, colGreen)
-		ui.Text(c, "请与服务器管理员核对指纹").FontSize(9).TextColor(colMuted2).NoWrap()
+		iconEl(c, iconShield, 11, iconColor)
+		ui.Text(c, footnote).FontSize(9).TextColor(colMuted2).NoWrap()
 		ui.Text(c, "").Grow(1)
 		if ghostAction(c, t, "hostkey-cancel", "取消", nil).Clicked() {
 			a.answerHostKey(false)
 		}
-		if primaryAction(c, "hostkey-trust", "信任并连接", iconShield).Clicked() {
+		if primaryAction(c, "hostkey-trust", action, iconShield).Clicked() {
 			a.answerHostKey(true)
 		}
 	})

@@ -37,7 +37,7 @@ func TestSettingsViewRenders(t *testing.T) {
 
 	a.settingsSection = 3
 	tt.Frame()
-	for _, want := range []string{"并发任务", "同名文件", "历史保留", "最近 7 天"} {
+	for _, want := range []string{"恢复上次工作区", "并发任务", "同名文件", "历史保留", "最近 7 天", "备份与迁移", "连接与设置备份"} {
 		if !tt.HasText(want) {
 			t.Fatalf("connection settings missing %q; texts = %q", want, tt.Texts())
 		}
@@ -52,6 +52,7 @@ func TestSaveSettingsInMemory(t *testing.T) {
 	a.settingsFontSize = "16"
 	a.settingsScrollback = "20"
 	a.settings.Theme = 1
+	a.settings.RestoreWorkspace = false
 	a.transferLimitPick = "3 个"
 	a.transferConflictPick = "跳过"
 	a.saveSettings()
@@ -62,7 +63,8 @@ func TestSaveSettingsInMemory(t *testing.T) {
 	if a.settings.FontSize != 16 || a.settings.ScrollbackMB != 20 || a.settings.Theme != 1 {
 		t.Fatalf("settings = %+v", a.settings)
 	}
-	if a.settings.TransferConcurrency != 3 || a.settings.TransferConflict != int(transferConflictSkip) {
+	if a.settings.TransferConcurrency != 3 || a.settings.TransferConflict != int(transferConflictSkip) ||
+		a.settings.RestoreWorkspace {
 		t.Fatalf("transfer settings = %+v", a.settings)
 	}
 
@@ -199,6 +201,31 @@ func TestTerminalSchemePersists(t *testing.T) {
 	b.SetStore(st)
 	if b.settings.TerminalScheme != "Dracula" {
 		t.Fatalf("loaded scheme = %q, want Dracula", b.settings.TerminalScheme)
+	}
+}
+
+func TestWorkspaceRestoreSettingPersists(t *testing.T) {
+	mygo.App.SetPath(mygo.PathUserData, t.TempDir())
+	t.Cleanup(func() { mygo.App.SetPath(mygo.PathUserData, "") })
+
+	st, err := store.Open(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	a := New()
+	a.SetStore(st)
+	a.settings.RestoreWorkspace = false
+	a.saveSettings()
+	if a.settingsErr != "" {
+		t.Fatalf("save settings: %s", a.settingsErr)
+	}
+
+	b := New()
+	b.SetStore(st)
+	if b.settings.RestoreWorkspace {
+		t.Fatal("workspace restore setting did not persist")
 	}
 }
 
