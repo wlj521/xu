@@ -160,7 +160,10 @@ func (a *App) inspectorContent(c *ui.Context, t *ui.Theme) {
 	if ts == nil {
 		title := "未连接"
 		sub := "点顶部 + 新建标签页，从快速连接里选择服务器"
-		if p, ok := a.activeConnectingProfile(); ok {
+		if p, ok := a.activeRestoredProfile(); ok {
+			title = "已恢复 " + profileDisplayName(p)
+			sub = "标签已恢复但尚未连接；在终端页点击「连接」建立 SSH 会话"
+		} else if p, ok := a.activeConnectingProfile(); ok {
 			title = "正在连接 " + profileDisplayName(p)
 			sub = "连接成功后在这里显示 CPU、内存、磁盘与网络"
 		} else if a.quickTabActive() {

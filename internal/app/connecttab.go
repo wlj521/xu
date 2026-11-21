@@ -17,6 +17,10 @@ type connectingTab struct {
 	profile store.Profile
 	err     string
 	cancel  context.CancelFunc
+	// restored marks a tab brought back from the saved workspace. It stays
+	// idle until the user asks for a connection: restoring a dozen tabs must
+	// not open a dozen SSH sessions, monitors and SFTP clients at launch.
+	restored bool
 	// origin is the quick-connect page this dial was started from. It stays
 	// open while the dial runs and closes when the connection succeeds, the
 	// click having consumed it.
@@ -41,6 +45,15 @@ func (a *App) connectingTabActive() bool {
 func (a *App) activeConnectingProfile() (store.Profile, bool) {
 	tab := a.activeTabRef()
 	if tab == nil || tab.kind != tabConnecting || tab.conn == nil {
+		return store.Profile{}, false
+	}
+	return tab.conn.profile, true
+}
+
+func (a *App) activeRestoredProfile() (store.Profile, bool) {
+	tab := a.activeTabRef()
+	if tab == nil || tab.kind != tabConnecting || tab.conn == nil ||
+		!tab.conn.restored || tab.conn.err != "" || tab.conn.cancel != nil {
 		return store.Profile{}, false
 	}
 	return tab.conn.profile, true
@@ -203,7 +216,11 @@ func (a *App) connectingTabView(c *ui.Context, t *ui.Theme, tab *appTab) {
 	queued := conn.cancel == nil && conn.err == ""
 	title := "正在连接 " + shortLabel(name, 30) + " …"
 	if queued {
-		title = "等待恢复 " + shortLabel(name, 30) + " …"
+		if conn.restored {
+			title = "已恢复 " + shortLabel(name, 30) + " · 尚未连接"
+		} else {
+			title = "等待连接 " + shortLabel(name, 30) + " …"
+		}
 	}
 
 	ui.Column(c).Grow(1).Fill().Background(colTermBg).Padding(18, 20).Gap(5).Children(func() {
@@ -221,6 +238,21 @@ func (a *App) connectingTabView(c *ui.Context, t *ui.Theme, tab *appTab) {
 			return
 		}
 		if queued {
+			if conn.restored {
+				ui.Text(c, "标签已从上次工作区恢复，但还没有建立 SSH 会话。").
+					FontSize(9.8).Font("Cascadia Code").TextColor(colMuted).Margin(9, 0, 0, 0)
+				ui.Text(c, "点击连接后才会创建 SSH、SFTP 与监控会话，避免启动时同时拨号。").
+					FontSize(9).Font("Cascadia Code").TextColor(colMuted2).Margin(2, 0, 0, 0)
+				ui.Row(c).Gap(8).Margin(10, 0, 0, 0).Children(func() {
+					if primaryAction(c, fmt.Sprintf("conn-open-%d", tab.id), "连接", iconLink).Clicked() {
+						a.connectTab(tab)
+					}
+					if ghostAction(c, t, fmt.Sprintf("conn-edit-%d", tab.id), "编辑连接", iconEdit).Clicked() {
+						a.editProfile(conn.profile)
+					}
+				})
+				return
+			}
 			ui.Row(c).Gap(7).AlignItems(ui.Center).Margin(9, 0, 0, 0).Children(func() {
 				statusDot(c, colMuted2, 6)
 				ui.Text(c, "前一个会话完成后将自动连接").FontSize(9.8).

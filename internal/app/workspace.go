@@ -155,12 +155,11 @@ func (a *App) restoreWorkspaceIfPending() {
 	}
 	a.workspaceRestorePending = false
 	a.restoreWorkspaceTabs()
-	a.startNextWorkspaceConnect()
 }
 
-// restoreWorkspaceTabs opens every saved server tab as a connecting tab. It
-// does not dial; startNextWorkspaceConnect serialises the actual dials because
-// the connecting page tracks one in-flight handshake.
+// restoreWorkspaceTabs recreates every saved server tab in its restored,
+// idle state. It never dials: opening a large workspace must not launch a
+// burst of SSH, SFTP and monitor sessions at startup.
 func (a *App) restoreWorkspaceTabs() {
 	if len(a.workspace.Tabs) == 0 {
 		return
@@ -168,6 +167,7 @@ func (a *App) restoreWorkspaceTabs() {
 	a.workspaceRestoring = true
 	a.saveProfile = false
 	var activeID int64
+	restored := 0
 	tabIDByIndex := make(map[int]int64, len(a.workspace.Tabs))
 	for i, profileID := range a.workspace.Tabs {
 		profile, ok := a.profileByID(profileID)
@@ -175,11 +175,12 @@ func (a *App) restoreWorkspaceTabs() {
 			continue
 		}
 		tab := a.connectingTab(profile)
+		tab.conn.restored = true
+		restored++
 		tabIDByIndex[i] = tab.id
 		if i == a.workspace.Active {
 			activeID = tab.id
 		}
-		a.workspaceQueue = append(a.workspaceQueue, tab.id)
 	}
 	a.terminalSplit = nil
 	if split := a.workspace.Split; split != nil {
@@ -199,48 +200,17 @@ func (a *App) restoreWorkspaceTabs() {
 			}
 		}
 	}
-	if activeID == 0 && len(a.workspaceQueue) > 0 {
-		activeID = a.workspaceQueue[0]
-	}
-	for i, id := range a.workspaceQueue {
-		if id != activeID {
-			continue
+	if activeID == 0 && restored > 0 {
+		for _, tab := range a.tabs {
+			activeID = tab.id
+			break
 		}
-		copy(a.workspaceQueue[1:i+1], a.workspaceQueue[:i])
-		a.workspaceQueue[0] = id
-		break
 	}
 	if idx := a.tabIndexByID(activeID); idx >= 0 {
 		a.activateTabIndex(idx)
 	}
 	a.workspaceRestoring = false
-	if len(a.workspaceQueue) > 0 {
-		a.status = fmt.Sprintf("正在恢复 %d 个会话…", len(a.workspaceQueue))
-	}
-}
-
-func (a *App) startNextWorkspaceConnect() {
-	if a.connecting || a.workspaceRestoring {
-		return
-	}
-	for len(a.workspaceQueue) > 0 {
-		id := a.workspaceQueue[0]
-		a.workspaceQueue = a.workspaceQueue[1:]
-		idx := a.tabIndexByID(id)
-		if idx < 0 {
-			continue
-		}
-		tab := a.tabs[idx]
-		if tab.kind != tabConnecting || tab.conn == nil || tab.conn.cancel != nil {
-			continue
-		}
-		profile := tab.conn.profile
-		a.saveProfile = false
-		a.startConnectToTab(profile, tab, 0)
-		if a.connecting {
-			return
-		}
-		// A setup error (for example a missing jump host) leaves no dial to
-		// finish, so continue with the next restored tab here.
+	if restored > 0 {
+		a.status = fmt.Sprintf("已恢复 %d 个标签；点击「连接」后建立 SSH 会话", restored)
 	}
 }

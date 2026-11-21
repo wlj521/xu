@@ -6,7 +6,7 @@
 
 ![Xu 欢迎页：快速连接、连接管理、最近连接与工作台能力](design/images/welcome.png)
 
-- 版本：`0.4.0`
+- 版本：`0.4.1`
 - 技术栈：Go `1.27.4` + [mygo](https://github.com/egoist/mygo) `0.10.0` 原生 UI + Ghostty VT
 - 平台：Windows（x64）、macOS（Universal）、Linux（amd64 / arm64）
 - 项目主页：<https://wlj521.github.io/xu/>
@@ -25,7 +25,7 @@
 
 - **会话管理**：用户自建分组、保存 SSH 连接、密码/私钥/SSH Agent/MFA 认证、主机密钥 TOFU 校验、快速连接与连接管理器；支持从 JSON 连接配置批量导入服务器；同一服务器可开多个标签页（自动编号区分）。
 - **SSH 密钥**：连接配置可选择任意私钥文件或生成新的 Ed25519 密钥（可先填写口令生成加密私钥）；加密私钥在连接时于应用内询问口令，可查看公钥 SHA256 指纹并复制公钥。支持 keyboard-interactive / MFA 多轮认证，服务器要求的验证码或动态口令会在应用内弹窗输入。
-- **工作区恢复**：最近连接按实际成功连接时间排序；退出后再次启动时会按原标签顺序恢复已保存服务器，并自动启动设置为自动的端口转发。遇到 MFA、私钥口令或首次主机指纹时会暂停自动连接，等待用户确认后继续。
+- **工作区恢复**：最近连接按实际成功连接时间排序；退出后再次启动时只按原标签顺序恢复服务器标签，不会自动建立 SSH、SFTP 或监控连接，点击标签内的「连接」后才拨号。连接成功后继续自动启动该服务器设置为自动的端口转发。退出时若仍有标签未关闭，会先提示退出将断开全部连接。
 - **备份与迁移**：连接管理器或「设置 → 连接 → 备份与迁移」可导出 Xu JSON 备份，包含连接、分组、快捷命令、端口转发和常规设置，不包含密码、私钥内容或 known_hosts；支持导入 Xu 备份和标准 OpenSSH `config`，冲突可选择跳过、覆盖或重命名。
 - **主机密钥**：「设置 → 连接 → 主机密钥」可查看已保存的主机地址与完整 SHA256 指纹，并删除不再信任的记录；主机重装导致指纹变化时，连接前的确认弹窗会同时显示旧值和新值，明确提示风险后再更新。
 - **跳板机**：连接配置可选择另一个已保存连接作为跳板机，并通过它打开 SSH 隧道；跳板机自身也可继续选择跳板机，形成多级链路，循环引用会被阻止。
@@ -105,9 +105,9 @@ build\windows-amd64\MD5SUMS
 `SHA256SUMS` / `MD5SUMS` 是便携版和安装包的校验值（`sha256sum` / `md5sum` 格式）。建议使用 SHA-256 校验完整性；MD5 仅为兼容旧工具保留，不建议作为安全校验。Windows 上可这样对照：
 
 ```powershell
-Get-FileHash .\xu-setup-0.4.0-amd64.exe -Algorithm SHA256
+Get-FileHash .\xu-setup-0.4.1-amd64.exe -Algorithm SHA256
 # 或者
-certutil -hashfile .\xu-setup-0.4.0-amd64.exe SHA256
+certutil -hashfile .\xu-setup-0.4.1-amd64.exe SHA256
 ```
 
 只生成免安装版时使用：
@@ -217,8 +217,8 @@ powershell -ExecutionPolicy Bypass -File .\build-local.ps1
 Release 同时包含各平台的 `update-*.json`、签名更新归档和 `install.sh` / `install.ps1`，并生成统一的 `SHA256SUMS` / `MD5SUMS`。
 
 ```bash
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
 工作流会核对标签与 `mygo.json` 的 `version`，发版前先更新版本号。macOS 和 Linux 可以使用同一条安装脚本：

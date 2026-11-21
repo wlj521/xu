@@ -69,7 +69,7 @@ type App struct {
 	workspaceRestorePending bool
 	workspaceRestoring      bool
 	workspace               workspaceState
-	workspaceQueue          []int64
+	pendingConnectIDs       []int64
 
 	// Synchronised keyboard input for selected SSH terminal tabs.
 	syncInputEnabled bool
@@ -222,6 +222,12 @@ type App struct {
 	overviewOpen       bool
 	overviewPendingTab int64
 
+	quitConfirmOpen bool
+	quitAllowed     bool
+	quitInProgress  bool
+	quitRequested   bool
+	quitGuardBound  bool
+
 	monitorAlertState    map[int64]*monitorSessionAlertState
 	monitorAlerts        []monitorAlertNotice
 	pendingMonitorToasts []string
@@ -359,6 +365,12 @@ func New() *App {
 
 func (a *App) Attach(w *mygo.Window) {
 	a.win = w
+	w.OnClose(a.handleWindowClose)
+	if !a.quitGuardBound {
+		a.quitGuardBound = true
+		mygo.App.OnBeforeQuit(a.handleBeforeQuit)
+		mygo.App.OnQuitCanceled(a.handleQuitCanceled)
+	}
 	a.restoreWorkspaceIfPending()
 }
 
@@ -528,6 +540,9 @@ func (a *App) View(c *ui.Context) {
 		}
 		if a.quickCmdEditOpen {
 			a.quickCommandModal(c, t)
+		}
+		if a.quitConfirmOpen {
+			a.quitConfirmModal(c, t)
 		}
 		if settingsWasOpen && !a.settingsOpen {
 			a.saveSettings()
@@ -703,7 +718,7 @@ func (a *App) doConnect(ctx context.Context, cancel context.CancelFunc, p sshx.P
 
 	fail := func(msg string) {
 		a.post(func() {
-			defer a.startNextWorkspaceConnect()
+			defer a.startNextPendingConnect()
 			a.stopConnectTimer()
 			a.connecting = false
 			a.connectingProfileID = 0
@@ -761,7 +776,7 @@ func (a *App) doConnect(ctx context.Context, cancel context.CancelFunc, p sshx.P
 	}
 
 	a.post(func() {
-		defer a.startNextWorkspaceConnect()
+		defer a.startNextPendingConnect()
 		// front tells whether the finished session is on the tab the user is
 		// looking at: a dial that finishes in the background must not steal
 		// focus or reset the front tab's layout.

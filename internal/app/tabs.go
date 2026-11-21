@@ -295,6 +295,9 @@ func (a *App) tabDotColor(tab *appTab) ui.Color {
 		if tab.conn != nil && tab.conn.err != "" {
 			return colRed
 		}
+		if tab.conn != nil && tab.conn.restored && tab.conn.cancel == nil {
+			return colMuted
+		}
 		return colCyan
 	}
 	if tab == nil || tab.kind == tabQuickConnect {
@@ -318,7 +321,7 @@ func (a *App) closeTabIndex(i int) {
 	if i < 0 || i >= len(a.tabs) {
 		return
 	}
-	defer a.startNextWorkspaceConnect()
+	defer a.startNextPendingConnect()
 	defer a.saveWorkspace()
 	closingActive := i == a.activeTab
 	tab := a.tabs[i]
@@ -491,6 +494,16 @@ func (a *App) connectTab(tab *appTab) {
 		a.activateTabIndex(idx)
 	}
 	if tab.kind == tabConnecting {
+		if tab.conn != nil && tab.conn.restored && tab.conn.err == "" && tab.conn.cancel == nil {
+			if a.connecting {
+				a.queuePendingConnect(tab.id)
+				a.status = "已有连接正在进行，标签已加入连接队列"
+				return
+			}
+			a.status = "正在连接 " + a.tabDisplayTitle(tab) + "…"
+			a.startConnectToTab(tab.conn.profile, tab, tab.conn.origin)
+			return
+		}
 		if tab.conn != nil && tab.conn.err != "" {
 			a.retryConnectingTab(tab)
 			return
@@ -523,24 +536,65 @@ func (a *App) connectTab(tab *appTab) {
 	a.reconnect(ts)
 }
 
+func (a *App) queuePendingConnect(tabID int64) {
+	if tabID == 0 {
+		return
+	}
+	for _, id := range a.pendingConnectIDs {
+		if id == tabID {
+			return
+		}
+	}
+	a.pendingConnectIDs = append(a.pendingConnectIDs, tabID)
+}
+
 func (a *App) connectAllTabs() {
 	count := 0
 	for _, tab := range a.tabs {
-		if tab.kind != tabTerminal || tab.term == nil {
+		if tab.kind == tabConnecting && tab.conn != nil && tab.conn.restored &&
+			tab.conn.err == "" && tab.conn.cancel == nil {
+			a.queuePendingConnect(tab.id)
+			count++
 			continue
 		}
-		ts := tab.term
-		if ts.local || ts.reconnecting || (!ts.exited && ts.client != nil) {
-			continue
+		if tab.kind == tabTerminal && tab.term != nil {
+			ts := tab.term
+			if ts.local || ts.reconnecting || (!ts.exited && ts.client != nil) {
+				continue
+			}
+			a.reconnect(ts)
+			count++
 		}
-		a.reconnect(ts)
-		count++
 	}
 	if count == 0 {
 		a.status = "没有需要连接的标签"
 		return
 	}
 	a.status = fmt.Sprintf("正在连接 %d 个标签…", count)
+	a.startNextPendingConnect()
+}
+
+func (a *App) startNextPendingConnect() {
+	if a.connecting {
+		return
+	}
+	for len(a.pendingConnectIDs) > 0 {
+		id := a.pendingConnectIDs[0]
+		a.pendingConnectIDs = a.pendingConnectIDs[1:]
+		idx := a.tabIndexByID(id)
+		if idx < 0 {
+			continue
+		}
+		tab := a.tabs[idx]
+		if tab.kind != tabConnecting || tab.conn == nil || !tab.conn.restored ||
+			tab.conn.err != "" || tab.conn.cancel != nil {
+			continue
+		}
+		a.startConnectToTab(tab.conn.profile, tab, tab.conn.origin)
+		if a.connecting {
+			return
+		}
+	}
 }
 
 func (a *App) disconnectTab(tab *appTab) {
@@ -751,6 +805,8 @@ func (a *App) tabStrip(c *ui.Context, t *ui.Theme) {
 							chip, tint := "连接中", colCyan
 							if tab.conn != nil && tab.conn.err != "" {
 								chip, tint = "失败", colRed
+							} else if tab.conn != nil && tab.conn.restored && tab.conn.cancel == nil {
+								chip, tint = "待连接", colMuted
 							}
 							ui.Box(c).Height(16).Padding(0, 4).Radius(3).
 								Background(tint.Alpha(0.07)).Center().Children(func() {

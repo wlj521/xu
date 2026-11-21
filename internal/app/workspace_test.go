@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo"
@@ -99,9 +100,16 @@ func TestWorkspaceSaveLoadAndRestoreTabs(t *testing.T) {
 		if tab.kind != tabConnecting || tab.conn == nil || tab.conn.profile.ID != wantID {
 			t.Fatalf("tab %d = %+v, want profile %d", i, tab, wantID)
 		}
+		if !tab.conn.restored {
+			t.Fatalf("tab %d did not stay idle after restore", i)
+		}
 	}
-	if b.activeTab != 1 || len(b.workspaceQueue) != 2 {
-		t.Fatalf("restore state: active=%d queue=%v", b.activeTab, b.workspaceQueue)
+	if b.activeTab != 1 || b.connecting || len(b.pendingConnectIDs) != 0 {
+		t.Fatalf("restore started a connection: active=%d connecting=%v queue=%v",
+			b.activeTab, b.connecting, b.pendingConnectIDs)
+	}
+	if !strings.Contains(b.status, "已恢复 2 个标签") {
+		t.Fatalf("restore status = %q", b.status)
 	}
 	if b.terminalSplit == nil || b.terminalSplit.firstID != b.tabs[0].id ||
 		b.terminalSplit.secondID != b.tabs[1].id || b.terminalSplit.layout != splitLayoutRows ||
@@ -144,12 +152,15 @@ func TestWorkspaceRestoreSkipsDeletedProfiles(t *testing.T) {
 		t.Fatalf("restored tabs = %+v", a.tabs)
 	}
 	// The saved active tab no longer exists, so the first restored server wins.
-	if a.activeTab != 0 || len(a.workspaceQueue) != 1 {
-		t.Fatalf("restore state: active=%d queue=%v", a.activeTab, a.workspaceQueue)
+	if a.activeTab != 0 || len(a.pendingConnectIDs) != 0 {
+		t.Fatalf("restore state: active=%d queue=%v", a.activeTab, a.pendingConnectIDs)
+	}
+	if !a.tabs[0].conn.restored {
+		t.Fatal("a restored tab did not stay idle")
 	}
 }
 
-func TestWorkspaceQueueContinuesAfterSetupFailure(t *testing.T) {
+func TestWorkspaceRestoreKeepsTabsIdle(t *testing.T) {
 	a := New()
 	a.profiles = []store.Profile{
 		{ID: 1, Name: "one", Host: "one.example.com", Port: 22, Username: "root", AuthType: "key", JumpProfileID: 99},
@@ -158,38 +169,60 @@ func TestWorkspaceQueueContinuesAfterSetupFailure(t *testing.T) {
 	a.workspace = workspaceState{Tabs: []int64{1, 2}, Active: 0}
 
 	a.restoreWorkspaceTabs()
-	a.startNextWorkspaceConnect()
-	if a.connecting || len(a.workspaceQueue) != 0 {
-		t.Fatalf("queue did not drain: connecting=%v queue=%v", a.connecting, a.workspaceQueue)
+	if a.connecting || len(a.pendingConnectIDs) != 0 {
+		t.Fatalf("restore dialed eagerly: connecting=%v queue=%v", a.connecting, a.pendingConnectIDs)
 	}
 	if len(a.tabs) != 2 {
 		t.Fatalf("restored tabs = %d, want 2", len(a.tabs))
 	}
 	for i, tab := range a.tabs {
-		if tab.conn == nil || tab.conn.err == "" {
-			t.Fatalf("tab %d did not retain its setup error: %+v", i, tab.conn)
+		if tab.conn == nil || !tab.conn.restored || tab.conn.err != "" {
+			t.Fatalf("tab %d = %+v, want an idle restored tab", i, tab.conn)
 		}
 	}
 }
 
-func TestQueuedWorkspaceTabShowsWaitingState(t *testing.T) {
+func TestRestoredWorkspaceTabShowsConnectPrompt(t *testing.T) {
 	a := New()
 	p := store.Profile{ID: 7, Name: "prod", Host: "prod.example.com", Port: 22, Username: "root"}
 	a.tabs = []*appTab{{
 		id: 1, kind: tabConnecting,
-		conn: &connectingTab{profile: p},
+		conn: &connectingTab{profile: p, restored: true},
 	}}
 	a.activeTab = 0
 
 	tt := ui.NewTester(a.View, 1280, 800)
 	tt.Frame()
-	for _, want := range []string{"等待恢复", "前一个会话完成后将自动连接", "关闭标签页可取消恢复"} {
+	for _, want := range []string{"已恢复", "尚未连接", "点击连接后才会创建 SSH、SFTP 与监控会话", "连接"} {
 		if !tt.HasText(want) {
-			t.Fatalf("queued tab does not show %q; texts = %q", want, tt.Texts())
+			t.Fatalf("restored tab does not show %q; texts = %q", want, tt.Texts())
 		}
 	}
 	if tt.HasText("正在建立 TCP 连接") {
-		t.Fatal("a queued tab showed another tab's live connect progress")
+		t.Fatal("a restored tab started dialing at startup")
+	}
+}
+
+func TestRestoredTabConnectsOnDemand(t *testing.T) {
+	a := New()
+	a.stop()
+	p := store.Profile{
+		ID: 7, Name: "prod", Host: "prod.example.com", Port: 22,
+		Username: "root", AuthType: "key", JumpProfileID: 99,
+	}
+	a.profiles = []store.Profile{p}
+	a.tabs = []*appTab{{
+		id: 1, kind: tabConnecting,
+		conn: &connectingTab{profile: p, restored: true},
+	}}
+	a.activeTab = 0
+
+	a.connectTab(a.tabs[0])
+	if a.tabs[0].conn == nil || a.tabs[0].conn.restored {
+		t.Fatalf("restored tab did not leave its idle state: %+v", a.tabs[0].conn)
+	}
+	if a.tabs[0].conn.err == "" {
+		t.Fatal("the invalid test connection did not fail fast")
 	}
 }
 

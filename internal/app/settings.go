@@ -727,7 +727,7 @@ func (a *App) settingsConnection(c *ui.Context, t *ui.Theme) {
 		settingsRow(c, "断线自动重连", "网络恢复后自动恢复终端与 SFTP 会话。", func() {
 			ui.Switch(c, &a.settings.AutoReconnect)
 		})
-		settingsRow(c, "恢复上次工作区", "启动时按原顺序重新打开服务器标签，并自动启动标记为自动的端口转发。", func() {
+		settingsRow(c, "恢复上次工作区", "启动时只恢复标签顺序，不会自动建立 SSH 连接；点击标签内的「连接」后才拨号并启动自动转发。", func() {
 			ui.Switch(c, &a.settings.RestoreWorkspace)
 		})
 	})
