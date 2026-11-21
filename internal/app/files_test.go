@@ -682,7 +682,8 @@ func TestFileRowContextMenu(t *testing.T) {
 	menu := tt.Menu()
 	want := map[string]bool{
 		"新建文件": false, "新建文件夹": false, "重命名…": false, "删除": false,
-		"下载到本机": false, "修改权限…": false, "快速删除（rm）": false,
+		"下载到本机": false, "发送到其他服务器…": false,
+		"修改权限…": false, "快速删除（rm）": false,
 	}
 	for _, item := range menu {
 		if _, ok := want[item]; ok {

@@ -106,6 +106,17 @@ func (a *App) inspectorMonitorHead(c *ui.Context, t *ui.Theme) {
 		}
 
 		ui.Text(c, "").Grow(1)
+		overview := ui.ButtonBase(c.Key("inspector-overview")).Size(24, 24).Radius(6).Center().
+			Tooltip("服务器总览与告警").Label("服务器总览")
+		if overview.Hovered() {
+			overview.Background(colPanel2)
+		}
+		overview.Children(func() {
+			iconEl(c, iconActivity, 13, condColor(a.activeMonitorAlertServerCount() > 0, colAmber, colMuted))
+		})
+		if overview.Clicked() {
+			a.openServerOverview()
+		}
 		collapse := ui.ButtonBase(c.Key("inspector-collapse")).Size(24, 24).Radius(6).Center().
 			Tooltip("收起监控（Ctrl B）").Label("收起监控")
 		if collapse.Hovered() {

@@ -51,6 +51,9 @@ func (a *App) activeConnectingProfile() (store.Profile, bool) {
 // stays open while the dial runs and closes when the session appears; the
 // session replaces the tab's contents in place.
 func (a *App) connectingTab(p store.Profile) *appTab {
+	if !a.workspaceRestoring {
+		a.clearTerminalSplit()
+	}
 	tab := &appTab{id: a.newTabID(), kind: tabConnecting, conn: &connectingTab{profile: p}}
 	a.tabs = append(a.tabs, tab)
 	a.activeTab = len(a.tabs) - 1

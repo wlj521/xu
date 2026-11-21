@@ -1,8 +1,6 @@
 package app
 
-import (
-	"github.com/egoist/mygo/ui"
-)
+import "github.com/egoist/mygo/ui"
 
 const titleBarHeight = 32
 

@@ -51,7 +51,7 @@ func (a *App) reconnect(ts *termSession) {
 			return
 		}
 
-		newTS, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay(), a.logHL)
+		newTS, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.onTerminalInput, a.termDisplay(), a.logHL)
 		if err != nil {
 			client.Close()
 			a.post(func() {
@@ -88,6 +88,8 @@ func (a *App) reconnect(ts *termSession) {
 			}
 			a.activeTerm = idx
 
+			a.removeSyncInputSession(ts.ID)
+			a.syncInputActiveChanged()
 			a.finding = false
 			a.resetFind()
 			a.filesOpen = false
@@ -96,6 +98,7 @@ func (a *App) reconnect(ts *termSession) {
 			a.batchOpen = false
 
 			a.discardEditorsForTerm(ts.ID)
+			a.forgetMonitorAlerts(ts.ID)
 			a.stopMonitor(ts.ID)
 			a.stopForwards(ts.ID)
 			if b := a.browsers[ts.ID]; b != nil {

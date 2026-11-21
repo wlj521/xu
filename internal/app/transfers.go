@@ -20,21 +20,39 @@ type transferKind int
 const (
 	transferUpload transferKind = iota
 	transferDownload
+	transferRemote
 )
 
 func (k transferKind) text() string {
-	if k == transferDownload {
+	switch k {
+	case transferDownload:
 		return "download"
+	case transferRemote:
+		return "remote"
+	default:
+		return "upload"
 	}
-	return "upload"
 }
 
 func transferTargetLabel(kind transferKind, target string) string {
 	prefix := "目标 "
 	if kind == transferDownload {
 		prefix = "保存到 "
+	} else if kind == transferRemote {
+		prefix = "发送到 "
 	}
 	return prefix + target
+}
+
+func transferKindFromText(text string) transferKind {
+	switch text {
+	case "download":
+		return transferDownload
+	case "remote":
+		return transferRemote
+	default:
+		return transferUpload
+	}
 }
 
 type transferStatus int
@@ -96,6 +114,7 @@ type transferTask struct {
 	cancelRequested bool
 	work            func(context.Context, func(int64, int64)) error
 	onDone          func()
+	targetSessionID int64
 	profileID       int64
 	server          string
 	payload         transferPayload
@@ -407,7 +426,7 @@ func (a *App) cancelTransfer(id int64) {
 func (a *App) cancelTransfersForSession(sessionID int64) {
 	for i := len(a.transferTasks) - 1; i >= 0; i-- {
 		task := a.transferTasks[i]
-		if task.sessionID != sessionID {
+		if task.sessionID != sessionID && task.targetSessionID != sessionID {
 			continue
 		}
 		if task.status == transferQueued {
@@ -476,10 +495,7 @@ func (a *App) loadTransferHistory() {
 	}
 	records := make([]transferRecord, 0, len(history))
 	for _, rec := range history {
-		kind := transferUpload
-		if rec.Kind == "download" {
-			kind = transferDownload
-		}
+		kind := transferKindFromText(rec.Kind)
 		server := rec.Server
 		if server == "" && rec.ProfileID != 0 {
 			server = a.transferServerLabel(rec.ProfileID)

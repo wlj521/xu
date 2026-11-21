@@ -37,7 +37,11 @@ func TestSettingsViewRenders(t *testing.T) {
 
 	a.settingsSection = 3
 	tt.Frame()
-	for _, want := range []string{"恢复上次工作区", "并发任务", "同名文件", "历史保留", "最近 7 天", "备份与迁移", "连接与设置备份"} {
+	for _, want := range []string{
+		"恢复上次工作区", "并发任务", "同名文件", "历史保留", "最近 7 天",
+		"监控告警", "阈值告警", "断线提醒", "桌面通知", "资源阈值", "延迟阈值",
+		"备份与迁移", "连接与设置备份",
+	} {
 		if !tt.HasText(want) {
 			t.Fatalf("connection settings missing %q; texts = %q", want, tt.Texts())
 		}

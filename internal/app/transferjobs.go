@@ -19,6 +19,7 @@ type transferPayload struct {
 	Conflict int                      `json:"conflict"`
 	Upload   *transferUploadPayload   `json:"upload,omitempty"`
 	Download *transferDownloadPayload `json:"download,omitempty"`
+	Remote   *transferRemotePayload   `json:"remote,omitempty"`
 	Resume   *transferResumeSnapshot  `json:"resume,omitempty"`
 }
 
@@ -31,6 +32,15 @@ type transferDownloadPayload struct {
 	Remote    string `json:"remote"`
 	Local     string `json:"local"`
 	Directory bool   `json:"directory"`
+}
+
+type transferRemotePayload struct {
+	SourcePath      string `json:"source_path"`
+	TargetDir       string `json:"target_dir"`
+	TargetProfileID int64  `json:"target_profile_id,omitempty"`
+	TargetServer    string `json:"target_server"`
+	Directory       bool   `json:"directory"`
+	TargetSessionID int64  `json:"-"`
 }
 
 func (a *App) enqueueTransferJob(kind transferKind, label, target string, sessionID int64, payload transferPayload) int64 {
@@ -48,6 +58,9 @@ func (a *App) enqueueTransferJob(kind transferKind, label, target string, sessio
 		status:    transferQueued,
 		payload:   payload,
 		createdAt: time.Now(),
+	}
+	if payload.Remote != nil {
+		task.targetSessionID = payload.Remote.TargetSessionID
 	}
 	a.transferTasks = append(a.transferTasks, task)
 	a.persistTransferTask(task)
@@ -124,12 +137,40 @@ func (a *App) transferSession(task *transferTask) (*termSession, error) {
 	return nil, errors.New("原 SSH 会话已关闭；未保存的连接无法在重启后恢复传输")
 }
 
+func (a *App) remoteTransferTargetSession(task *transferTask, payload *transferRemotePayload) (*termSession, error) {
+	if task == nil || payload == nil {
+		return nil, errors.New("目标服务器参数缺失")
+	}
+	if ts := a.termSessionByID(task.targetSessionID); ts != nil &&
+		!ts.local && ts.client != nil && !ts.exited &&
+		(payload.TargetProfileID == 0 || ts.profileID == payload.TargetProfileID) {
+		return ts, nil
+	}
+	if payload.TargetProfileID != 0 {
+		if active := a.activeTerminal(); active != nil && active.profileID == payload.TargetProfileID &&
+			!active.local && active.client != nil && !active.exited {
+			return active, nil
+		}
+		for _, ts := range a.terms {
+			if ts.profileID == payload.TargetProfileID && !ts.local && ts.client != nil && !ts.exited {
+				return ts, nil
+			}
+		}
+		name := payload.TargetServer
+		if name == "" {
+			name = fmt.Sprintf("#%d", payload.TargetProfileID)
+		}
+		return nil, fmt.Errorf("请先连接目标服务器 %s 后再继续传输", name)
+	}
+	return nil, errors.New("目标服务器会话已关闭；未保存的连接无法在重启后恢复传输")
+}
+
 func (a *App) buildTransferWork(task *transferTask) (func(context.Context, func(int64, int64)) error, error) {
 	if task == nil {
 		return nil, errors.New("传输任务不存在")
 	}
 	payload := task.payload
-	if payload.Upload == nil && payload.Download == nil {
+	if payload.Upload == nil && payload.Download == nil && payload.Remote == nil {
 		return nil, errors.New("传输任务缺少可恢复参数")
 	}
 	ts, err := a.transferSession(task)
@@ -137,6 +178,13 @@ func (a *App) buildTransferWork(task *transferTask) (func(context.Context, func(
 		return nil, err
 	}
 	task.sessionID = ts.ID
+	if task.kind == transferRemote {
+		target, err := a.remoteTransferTargetSession(task, payload.Remote)
+		if err != nil {
+			return nil, err
+		}
+		task.targetSessionID = target.ID
+	}
 	state := newTransferResumeStateFrom(task.payload.Resume)
 	state.onChange = func() {
 		snapshot := state.snapshot()
@@ -187,6 +235,25 @@ func (a *App) buildTransferWork(task *transferTask) (func(context.Context, func(
 				)
 			}
 			return downloadFileResume(ctx, client, payload.Download.Remote, payload.Download.Local, report)
+		case transferRemote:
+			if payload.Remote == nil {
+				return errors.New("远程传输任务缺少目标服务器")
+			}
+			target, err := a.remoteTransferTargetSession(task, payload.Remote)
+			if err != nil {
+				return err
+			}
+			targetClient, err := sftp.NewClient(target.client)
+			if err != nil {
+				return fmt.Errorf("打开目标服务器 SFTP 会话: %w", err)
+			}
+			defer targetClient.Close()
+			return copyRemoteWithState(
+				ctx, client, targetClient,
+				payload.Remote.SourcePath, payload.Remote.TargetDir,
+				transferConflict(payload.Conflict), payload.Remote.Directory,
+				report, state,
+			)
 		default:
 			return errors.New("未知传输类型")
 		}
@@ -314,12 +381,10 @@ func (a *App) loadTransferJobs() {
 		if a.transferTaskByJobID(job.ID) != nil {
 			continue
 		}
-		kind := transferUpload
-		if job.Kind == "download" {
-			kind = transferDownload
-		}
+		kind := transferKindFromText(job.Kind)
 		var payload transferPayload
-		if err := json.Unmarshal([]byte(job.Payload), &payload); err != nil || (payload.Upload == nil && payload.Download == nil) {
+		if err := json.Unmarshal([]byte(job.Payload), &payload); err != nil ||
+			(payload.Upload == nil && payload.Download == nil && payload.Remote == nil) {
 			_ = a.store.DeleteTransferJob(a.ctx, job.ID)
 			continue
 		}
@@ -379,7 +444,11 @@ func (a *App) resumeTransfer(id int64) {
 		return
 	}
 	if task.work == nil {
-		if _, err := a.transferSession(task); err != nil {
+		_, err := a.transferSession(task)
+		if err == nil && task.kind == transferRemote {
+			_, err = a.remoteTransferTargetSession(task, task.payload.Remote)
+		}
+		if err != nil {
 			task.err = err.Error()
 			a.status = err.Error()
 			a.persistTransferTask(task)
@@ -430,6 +499,15 @@ func (a *App) pauseTransfersForShutdown() {
 
 func (a *App) refreshTransferViews(task *transferTask) {
 	if task == nil {
+		return
+	}
+	if task.kind == transferRemote {
+		target, err := a.remoteTransferTargetSession(task, task.payload.Remote)
+		if err == nil {
+			if targetBrowser := a.browsers[target.ID]; targetBrowser != nil {
+				targetBrowser.loadRemote()
+			}
+		}
 		return
 	}
 	ts, err := a.transferSession(task)

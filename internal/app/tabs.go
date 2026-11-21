@@ -71,6 +71,7 @@ func (a *App) openTermTab(term *termSession) {
 		a.activateTabIndex(idx)
 		return
 	}
+	a.clearTerminalSplit()
 	a.tabs = append(a.tabs, &appTab{id: a.newTabID(), kind: tabTerminal, term: term})
 	a.activeTab = len(a.tabs) - 1
 	if idx := a.termIndex(term); idx >= 0 {
@@ -84,6 +85,7 @@ func (a *App) openQuickTab() {
 	if a.finding {
 		a.closeFind()
 	}
+	a.clearTerminalSplit()
 	a.tabs = append(a.tabs, &appTab{id: a.newTabID(), kind: tabQuickConnect})
 	a.activeTab = len(a.tabs) - 1
 	a.activeTerm = -1
@@ -96,6 +98,7 @@ func (a *App) openQuickTab() {
 	a.settingsOpen = false
 	a.managerErr = ""
 	a.connectErr = ""
+	a.syncInputActiveChanged()
 }
 
 // activateTabIndex focuses the tab at index i, closing the find bar of the
@@ -109,6 +112,9 @@ func (a *App) activateTabIndex(i int) {
 		a.closeFind()
 	}
 	tab := a.tabs[i]
+	if a.terminalSplit != nil && !a.splitContains(tab.id) {
+		a.clearTerminalSplit()
+	}
 	a.activeTab = i
 	a.formOpen = false
 	a.pickerOpen = false
@@ -119,10 +125,15 @@ func (a *App) activateTabIndex(i int) {
 	a.settingsOpen = false
 	if tab.kind == tabQuickConnect || tab.term == nil {
 		a.activeTerm = -1
+		a.syncInputActiveChanged()
 		a.saveWorkspace()
 		return
 	}
 	a.activeTerm = a.termIndex(tab.term)
+	if a.splitContains(tab.id) {
+		tab.term.focusRequest = true
+	}
+	a.syncInputActiveChanged()
 	a.saveWorkspace()
 }
 
@@ -170,6 +181,9 @@ func (a *App) syncTabs() {
 	if len(a.tabs) == 0 {
 		a.activeTab = 0
 		a.activeTerm = -1
+		a.clearTerminalSplit()
+		a.pruneSyncInputSessions()
+		a.syncInputActiveChanged()
 		return
 	}
 	if a.activeTab < 0 || a.activeTab >= len(a.tabs) {
@@ -183,6 +197,9 @@ func (a *App) syncTabs() {
 	if front := a.activeTabRef(); front != nil && (front.kind == tabQuickConnect || front.kind == tabConnecting) {
 		a.activeTerm = -1
 	}
+	a.pruneTerminalSplit()
+	a.pruneSyncInputSessions()
+	a.syncInputActiveChanged()
 }
 
 // tabTitle is the short name shown on the tab: the saved profile name where
@@ -305,11 +322,15 @@ func (a *App) closeTabIndex(i int) {
 	defer a.saveWorkspace()
 	closingActive := i == a.activeTab
 	tab := a.tabs[i]
+	if a.splitContains(tab.id) {
+		a.clearTerminalSplit()
+	}
 	a.tabs = append(a.tabs[:i], a.tabs[i+1:]...)
 
 	switch tab.kind {
 	case tabTerminal:
 		if tab.term != nil {
+			a.removeSyncInputSession(tab.term.ID)
 			a.closeTermSession(tab.term)
 		}
 	case tabConnecting:
@@ -420,7 +441,7 @@ func (a *App) duplicateTab(tab *appTab) {
 			a.post(func() { a.status = "复制标签失败: " + err.Error() })
 			return
 		}
-		newTS, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay(), a.logHL)
+		newTS, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.onTerminalInput, a.termDisplay(), a.logHL)
 		if err != nil {
 			client.Close()
 			a.post(func() { a.status = "复制标签失败: " + err.Error() })
@@ -444,6 +465,7 @@ func (a *App) duplicateTab(tab *appTab) {
 			a.autoStartForwards(newTS)
 			a.startMonitorBackground(newTS)
 			a.touchProfile(profileID)
+			a.syncInputActiveChanged()
 			a.saveWorkspace()
 			a.status = "已复制标签 · " + title
 		})
@@ -562,6 +584,7 @@ func (a *App) disconnectSession(ts *termSession) {
 
 	ts.exited = true
 	ts.reconnectErr = ""
+	a.removeSyncInputSession(ts.ID)
 	if ts.local {
 		if ts.Term != nil {
 			ts.Term.Close()
@@ -639,7 +662,7 @@ func (a *App) tabsStripScrollWidth(c *ui.Context, quick bool) float32 {
 		content += a.tabWidth(c, i, tab) + 4
 	}
 	w, _ := c.Size()
-	fixed := float32(200) // manager, divider, "+", gaps, padding and actions
+	fixed := float32(262) // manager, divider, "+", gaps, padding and actions
 	if quick {
 		if w-monitorWidth(c) > 620 {
 			fixed += 150 // the quick-connect hint
@@ -787,6 +810,25 @@ func (a *App) tabStrip(c *ui.Context, t *ui.Theme) {
 		}
 		if ts != nil {
 			ui.Box(c).Width(1).Height(14).Background(colLine).MarginX(4)
+			splitIcon := iconLayoutV
+			splitTip := "终端分屏"
+			if a.terminalSplit != nil && a.terminalSplit.layout == splitLayoutRows {
+				splitIcon = iconLayoutH
+			}
+			if a.terminalSplit != nil {
+				splitTip = "终端分屏 · " + a.terminalSplit.layout.label()
+			}
+			splitAction := a.sessionAction(c, t, "ts-terminal-split", splitIcon, splitTip,
+				a.terminalSplit != nil && a.splitActive(), false)
+			splitAction.Menu(func(m *ui.Menu) { a.terminalSplitMenu(m) })
+			if !ts.local {
+				tip := "同步输入"
+				if a.syncInputEnabled {
+					tip = fmt.Sprintf("同步输入已启用 · %d 个标签", a.syncInputCount())
+				}
+				syncAction := a.sessionAction(c, t, "ts-sync-input", iconSync, tip, a.syncInputEnabled, false)
+				syncAction.Menu(func(m *ui.Menu) { a.syncInputMenu(m) })
+			}
 			quickCmd := a.sessionAction(c, t, "ts-quick-commands", iconCommand,
 				"快捷命令", a.quickCmdOpen, false)
 			a.quickCmdAnchor = quickCmd

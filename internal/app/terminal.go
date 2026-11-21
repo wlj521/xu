@@ -86,6 +86,8 @@ type termSession struct {
 	reconnecting bool
 	reconnectErr string
 	focusRequest bool
+	onInput      func(ui.InputEvent)
+	writeInput   func([]byte)
 }
 
 type termDisplay struct {
@@ -96,7 +98,7 @@ type termDisplay struct {
 	Dark         *terminal.Theme
 }
 
-func newTermSession(client *ssh.Client, p sshx.Profile, cols, rows int, post func(func()), onSearch func(int64, terminal.SearchStatus), display termDisplay, hl *logHighlighter) (*termSession, error) {
+func newTermSession(client *ssh.Client, p sshx.Profile, cols, rows int, post func(func()), onSearch func(int64, terminal.SearchStatus), onInput func(*termSession, ui.InputEvent), display termDisplay, hl *logHighlighter) (*termSession, error) {
 	conn, err := newSSHTermConn(client, cols, rows)
 	if err != nil {
 		return nil, err
@@ -110,6 +112,9 @@ func newTermSession(client *ssh.Client, p sshx.Profile, cols, rows int, post fun
 		sess:    conn.sess,
 		client:  client,
 		profile: p,
+	}
+	if onInput != nil {
+		ts.onInput = func(ev ui.InputEvent) { onInput(ts, ev) }
 	}
 
 	term, err := terminal.New(terminal.Options{
@@ -142,19 +147,25 @@ func newTermSession(client *ssh.Client, p sshx.Profile, cols, rows int, post fun
 	}
 
 	ts.Term = term
+	ts.writeInput = term.Send
 	return ts, nil
 }
 
-func terminalView(c *ui.Context, ts *termSession) {
+func terminalView(c *ui.Context, ts *termSession, autofocus bool) {
 	if ts.Term == nil {
 		return
 	}
 	view := terminal.View(c, ts.Term)
+	if ts.onInput != nil {
+		view.ObserveInput(ts.onInput)
+	}
 	if ts.focusRequest {
 		view.Focus()
 		ts.focusRequest = false
+	} else if autofocus {
+		view.AutoFocus()
 	}
-	view.Grow(1).FillWidth().AutoFocus()
+	view.Grow(1).FillWidth()
 }
 
 func (t *termSession) Close() {

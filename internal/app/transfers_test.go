@@ -319,3 +319,28 @@ func TestTransferPanelShowsQueueAndRetry(t *testing.T) {
 		t.Fatalf("retry did not resume the failed task: %+v", got)
 	}
 }
+
+func TestTransferPanelShowsRemoteSourceAndTarget(t *testing.T) {
+	a := New()
+	a.terms = []*termSession{{ID: 1, Title: "root@test"}}
+	a.syncTabs()
+	a.activeTerm = 0
+	a.bottomFiles = true
+	a.bottomFileTab = int(dockTransfers)
+	a.transferTasks = []*transferTask{{
+		id: 1, kind: transferRemote, label: "发送 logs",
+		target: "backup · ops@backup:2222 · /srv/logs",
+		status: transferPaused, server: "prod · root@prod:22",
+	}}
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	for _, want := range []string{
+		"发送 logs", "prod · root@prod:22",
+		"发送到 backup · ops@backup:2222 · /srv/logs",
+	} {
+		if !tt.HasText(want) {
+			t.Fatalf("remote transfer panel missing %q; texts = %q", want, tt.Texts())
+		}
+	}
+}

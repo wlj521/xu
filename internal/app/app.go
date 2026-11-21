@@ -71,6 +71,10 @@ type App struct {
 	workspace               workspaceState
 	workspaceQueue          []int64
 
+	// Synchronised keyboard input for selected SSH terminal tabs.
+	syncInputEnabled bool
+	syncInputIDs     map[int64]bool
+
 	// Connection/settings backup import preview.
 	backupOpen            bool
 	backupPath            string
@@ -130,6 +134,8 @@ type App struct {
 	activeTab       int
 	nextTabID       int64
 	pendingQuickTab int64 // quick-connect tab that hosts the connecting session
+	terminalSplit   *terminalSplit
+	splitRatioDirty bool
 
 	// Connection manager dialog ("连接管理器").
 	managerOpen   bool
@@ -210,9 +216,20 @@ type App struct {
 	delID      int64
 	delCancel  context.CancelFunc
 
-	monitorOpen bool
-	monitors    map[int64]*monitorState
-	netIface    map[int64]string // chosen network interface per session ("" = all)
+	monitorOpen        bool
+	monitors           map[int64]*monitorState
+	netIface           map[int64]string // chosen network interface per session ("" = all)
+	overviewOpen       bool
+	overviewPendingTab int64
+
+	monitorAlertState    map[int64]*monitorSessionAlertState
+	monitorAlerts        []monitorAlertNotice
+	pendingMonitorToasts []string
+
+	monitorCPUPick     string
+	monitorMemPick     string
+	monitorDiskPick    string
+	monitorLatencyPick string
 
 	forwardOpen   bool
 	forwardKind   int
@@ -281,6 +298,17 @@ type App struct {
 	transferTasks  []*transferTask
 	transferLog    []transferRecord
 	nextTransferID int64
+
+	// Remote-to-remote copy dialog, opened from a selected entry in the
+	// active remote file panel.
+	remoteTransferOpen           bool
+	remoteTransferSourceID       int64
+	remoteTransferSourcePath     string
+	remoteTransferSourceDir      bool
+	remoteTransferTargetChoice   string
+	remoteTransferTargetDir      string
+	remoteTransferConflictChoice string
+	remoteTransferErr            string
 }
 
 func New() *App {
@@ -294,11 +322,17 @@ func New() *App {
 		activeTerm:           -1,
 		saveProfile:          true,
 		trusted:              make(map[string]string),
+		syncInputIDs:         make(map[int64]bool),
 		fileSplit:            260,
 		fileSplitPct:         50,
 		browsers:             make(map[int64]*fileBrowser),
 		monitors:             make(map[int64]*monitorState),
 		netIface:             make(map[int64]string),
+		monitorAlertState:    make(map[int64]*monitorSessionAlertState),
+		monitorCPUPick:       "90%",
+		monitorMemPick:       "90%",
+		monitorDiskPick:      "90%",
+		monitorLatencyPick:   "500 ms",
 		forwardListen:        "127.0.0.1:8080",
 		forwardSave:          true,
 		forwards:             make(map[int64][]*forwardEntry),
@@ -384,7 +418,10 @@ func (a *App) Close() {
 }
 
 func (a *App) View(c *ui.Context) {
+	a.syncMonitorConnectionAlerts()
 	t := a.applyTheme(c)
+	a.flushMonitorAlertToasts(c)
+	c.SetMenuPresentation(ui.PopoverMenus)
 	settingsWasOpen := a.settingsOpen
 	bar := c.TitleBar()
 
@@ -411,6 +448,12 @@ func (a *App) View(c *ui.Context) {
 	}
 	if c.Shortcut(ui.Cmd|ui.Alt, ui.KeyB) {
 		a.toggleMonitor()
+	}
+	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyM) {
+		a.openMonitor()
+	}
+	if c.Shortcut(ui.Cmd|ui.Alt, ui.KeyM) {
+		a.openServerOverview()
 	}
 
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
@@ -440,6 +483,13 @@ func (a *App) View(c *ui.Context) {
 		if a.settingsOpen {
 			a.settingsModal(c, t)
 		}
+		if a.remoteTransferOpen {
+			a.remoteTransferModal(c, t)
+		}
+		if a.overviewOpen {
+			a.serverOverviewModal(c, t)
+		}
+		a.finishServerOverviewNavigation()
 		if a.knownHostsOpen {
 			a.knownHostsModal(c, t)
 		}
@@ -504,7 +554,7 @@ func (a *App) terminal(c *ui.Context) {
 				a.OpenLocalTerminal()
 			}
 		})
-		terminalView(c, ts)
+		terminalView(c, ts, true)
 		return
 	}
 
@@ -537,7 +587,7 @@ func (a *App) terminal(c *ui.Context) {
 		})
 	}
 
-	terminalView(c, ts)
+	terminalView(c, ts, true)
 }
 
 func (a *App) formProfile() (sshx.Profile, string, error) {
@@ -698,7 +748,7 @@ func (a *App) doConnect(ctx context.Context, cancel context.CancelFunc, p sshx.P
 	// The handshake already signed with the key; do not keep the passphrase
 	// in the session profile or any UI state afterwards.
 	p.KeyPassphrase = ""
-	ts, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.termDisplay(), a.logHL)
+	ts, err := newTermSession(client, p, 100, 30, a.post, a.onTermSearch, a.onTerminalInput, a.termDisplay(), a.logHL)
 	if err != nil {
 		client.Close()
 		fail("打开终端失败: " + err.Error())
@@ -760,6 +810,7 @@ func (a *App) doConnect(ctx context.Context, cancel context.CancelFunc, p sshx.P
 		a.touchProfile(ts.profileID)
 		a.autoStartForwards(ts)
 		a.startMonitorBackground(ts)
+		a.syncInputActiveChanged()
 		a.saveWorkspace()
 
 		if front {
@@ -1097,8 +1148,10 @@ func (a *App) closeTermSession(ts *termSession) {
 	if ts == nil {
 		return
 	}
+	a.removeSyncInputSession(ts.ID)
 	a.cancelTransfersForSession(ts.ID)
 	a.discardEditorsForTerm(ts.ID)
+	a.forgetMonitorAlerts(ts.ID)
 	a.stopMonitor(ts.ID)
 	a.stopForwards(ts.ID)
 	delete(a.netIface, ts.ID)
@@ -1175,6 +1228,9 @@ func (a *App) Menu() *mygo.Menu {
 			}},
 			{Label: "服务器监控", Accelerator: "CmdOrCtrl+Shift+M", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 				win.Update(func() { a.openMonitor() })
+			}},
+			{Label: "服务器总览与告警", Accelerator: "CmdOrCtrl+Alt+M", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+				win.Update(func() { a.openServerOverview() })
 			}},
 			{Label: "端口转发", Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 				win.Update(func() { a.openForwards() })

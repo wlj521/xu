@@ -96,6 +96,64 @@ func TestTransferTaskIdentityIncludesServer(t *testing.T) {
 	}
 }
 
+func TestRemoteTransferTaskPersistsAndLoads(t *testing.T) {
+	a, st, source := newTransferPersistenceApp(t)
+	target := store.Profile{Name: "backup", Host: "backup.example.com", Port: 2222, Username: "ops", AuthType: "key"}
+	if err := st.SaveProfile(context.Background(), &target); err != nil {
+		t.Fatal(err)
+	}
+	task := &transferTask{
+		id: 1, kind: transferRemote, label: "发送文件夹 logs",
+		target:          "backup · ops@backup.example.com:2222 · /srv/logs",
+		profileID:       source.ID,
+		server:          "prod · root@prod.example.com:22",
+		targetSessionID: 9,
+		status:          transferPaused,
+		done:            12,
+		total:           40,
+		createdAt:       time.Now(),
+		payload: transferPayload{
+			Conflict: int(transferConflictRename),
+			Remote: &transferRemotePayload{
+				SourcePath:      "/var/log",
+				TargetDir:       "/srv",
+				TargetProfileID: target.ID,
+				TargetServer:    "backup · ops@backup.example.com:2222",
+				Directory:       true,
+				TargetSessionID: 9,
+			},
+		},
+	}
+	a.transferTasks = append(a.transferTasks, task)
+	a.persistTransferTask(task)
+	if task.jobID == 0 {
+		t.Fatal("remote task did not get a job ID")
+	}
+
+	b := New()
+	b.SetStore(st)
+	if len(b.transferTasks) != 1 {
+		t.Fatalf("loaded tasks = %+v", b.transferTasks)
+	}
+	loaded := b.transferTasks[0]
+	if loaded.kind != transferRemote || loaded.profileID != source.ID ||
+		loaded.targetSessionID != 0 || loaded.payload.Remote == nil {
+		t.Fatalf("loaded remote task = %+v", loaded)
+	}
+	if loaded.payload.Remote.TargetProfileID != target.ID ||
+		loaded.payload.Remote.TargetDir != "/srv" ||
+		!loaded.payload.Remote.Directory {
+		t.Fatalf("loaded remote payload = %+v", loaded.payload.Remote)
+	}
+	jobs, err := st.TransferJobs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 1 || jobs[0].Kind != "remote" || jobs[0].Status != "paused" {
+		t.Fatalf("stored job = %+v", jobs)
+	}
+}
+
 func TestResumeRestoredTransferWaitsForSession(t *testing.T) {
 	_, st, profile := newTransferPersistenceApp(t)
 	task := &transferTask{

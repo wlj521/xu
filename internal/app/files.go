@@ -268,6 +268,9 @@ func (a *App) fileContextMenu(m *ui.Menu, b *fileBrowser, remote bool) {
 			if m.Item(label).Chosen() {
 				a.downloadSelected(b)
 			}
+			if m.Item("发送到其他服务器…").Chosen() {
+				a.openRemoteTransferDialog(b)
+			}
 		} else {
 			if m.Item("上传到远端").Chosen() {
 				a.uploadSelected(b)

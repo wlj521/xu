@@ -171,6 +171,9 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 		if paneIconButton(c, t, "bf-act-download", iconDownload, "下载所选").Clicked() {
 			a.downloadSelected(b)
 		}
+		if paneIconButton(c, t, "bf-act-remote-send", iconSync, "发送到其他服务器").Clicked() {
+			a.openRemoteTransferDialog(b)
+		}
 		more := paneIconButton(c, t, "bf-act-more", iconMore, "更多")
 		more.Menu(func(m *ui.Menu) {
 			if m.Item("新建文件").Chosen() {

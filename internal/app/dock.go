@@ -245,9 +245,10 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 		ui.Column(c).Gap(9).Children(func() {
 			if len(a.transferTasks) == 0 && len(a.transferLog) == 0 {
 				ui.Column(c).FillWidth().Padding(20, 12).Center().Gap(6).Children(func() {
-					iconEl(c, iconUpload, 22, colMuted2)
+					iconEl(c, iconSync, 22, colMuted2)
 					ui.Text(c, "暂无传输任务").FontSize(11).TextColor(colMuted)
-					ui.Text(c, "在文件面板里上传或下载文件，任务会进入队列").FontSize(9.5).TextColor(colMuted2)
+					ui.Text(c, "在文件面板里上传、下载或发送到其他服务器，任务会进入队列").
+						FontSize(9.5).TextColor(colMuted2)
 				})
 				return
 			}
@@ -290,7 +291,7 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 				ui.Box(c).FillWidth().Padding(9, 10).Radius(7).Background(colPanel2.Alpha(0.55)).
 					Border(1, colLine).Children(func() {
 					ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
-						iconEl(c, transferIcon(task.label), 13, statusColor)
+						iconEl(c, transferIcon(task.kind, task.label), 13, statusColor)
 						ui.Column(c).Grow(1).Gap(4).Children(func() {
 							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 								ui.Text(c, shortLabel(task.label, 42)).FontSize(10).TextColor(colText).NoWrap()
@@ -372,7 +373,7 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 					color = colRed
 				}
 				ui.Row(c).MinHeight(32).Gap(9).AlignItems(ui.Center).Children(func() {
-					iconEl(c, transferIcon(rec.Label), 12, color)
+					iconEl(c, transferIcon(rec.Kind, rec.Label), 12, color)
 					ui.Column(c).Grow(1).Gap(1).Children(func() {
 						ui.Text(c, shortLabel(rec.Label, 44)).FontSize(9.5).TextColor(colMuted).NoWrap()
 						if rec.Server != "" {
@@ -404,7 +405,13 @@ func (a *App) dockTransfersPanel(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-func transferIcon(label string) *ui.SVG {
+func transferIcon(kind transferKind, label string) *ui.SVG {
+	if kind == transferRemote {
+		return iconSync
+	}
+	if kind == transferDownload {
+		return iconDownload
+	}
 	if strings.Contains(label, "下载") {
 		return iconDownload
 	}

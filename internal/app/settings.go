@@ -29,6 +29,13 @@ type appSettings struct {
 	RestoreWorkspace    bool        // reopens the previous server tabs
 	TransferConcurrency int         // concurrent transfer tasks
 	TransferConflict    int         // 0 overwrite, 1 skip, 2 rename
+	MonitorAlerts       bool        // threshold alerts for connected servers
+	MonitorDisconnect   bool        // notify when a connected server drops
+	MonitorDesktop      bool        // desktop notifications while Xu is unfocused
+	MonitorCPU          int         // CPU alert percentage
+	MonitorMemory       int         // memory alert percentage
+	MonitorDisk         int         // disk alert percentage
+	MonitorLatency      int         // SSH round-trip alert in milliseconds
 	LogHighlight        bool        // colorize log lines in SSH terminals
 	LogAnchorOnly       bool        // only colorize lines that look like logs
 	LogRules            []logRule   // log highlighting rules, in priority order
@@ -41,7 +48,14 @@ func defaultSettings() appSettings {
 		Accent: defaultAccent, CopyOnSelect: true, FindHighlight: true, AutoReconnect: true,
 		RestoreWorkspace:    true,
 		TransferConcurrency: 2, TransferConflict: int(transferConflictOverwrite),
-		LogHighlight: true, LogAnchorOnly: true, LogRules: defaultLogRules(),
+		MonitorAlerts:     true,
+		MonitorDisconnect: true,
+		MonitorDesktop:    true,
+		MonitorCPU:        90,
+		MonitorMemory:     90,
+		MonitorDisk:       90,
+		MonitorLatency:    500,
+		LogHighlight:      true, LogAnchorOnly: true, LogRules: defaultLogRules(),
 	}
 }
 
@@ -739,6 +753,32 @@ func (a *App) settingsConnection(c *ui.Context, t *ui.Theme) {
 		settingsKV(c, "历史保留", "最近 7 天")
 	})
 
+	settingsGroup(c, "监控告警", false, func() {
+		settingsRow(c, "阈值告警", "CPU、内存、磁盘或 SSH 延迟超过阈值时提醒；持续超限不会重复通知。", func() {
+			ui.Switch(c, &a.settings.MonitorAlerts)
+		})
+		settingsRow(c, "断线提醒", "已连接的服务器断开时显示一次提醒，重连后自动恢复。", func() {
+			ui.Switch(c, &a.settings.MonitorDisconnect)
+		})
+		settingsRow(c, "桌面通知", "Xu 在后台时发送系统通知；窗口在前台时使用应用内提示。", func() {
+			ui.Switch(c, &a.settings.MonitorDesktop)
+		})
+		settingsRow(c, "资源阈值", "CPU / 内存 / 磁盘使用率。", func() {
+			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "CPU").FontSize(8.2).TextColor(colMuted2)
+				ui.Select(c, &a.monitorCPUPick, monitorPercentOptions()).Width(72)
+				ui.Text(c, "内存").FontSize(8.2).TextColor(colMuted2)
+				ui.Select(c, &a.monitorMemPick, monitorPercentOptions()).Width(72)
+				ui.Text(c, "磁盘").FontSize(8.2).TextColor(colMuted2)
+				ui.Select(c, &a.monitorDiskPick, monitorPercentOptions()).Width(72)
+			})
+		})
+		settingsRow(c, "延迟阈值", "通过 SSH keepalive 测得的往返时间。", func() {
+			ui.Select(c, &a.monitorLatencyPick, monitorLatencyOptions()).Width(96)
+		})
+		settingsNote(c, iconActivity, "超过阈值后需回落到阈值以下才会再次提醒，避免同一告警持续刷屏。")
+	})
+
 	settingsGroup(c, "备份与迁移", false, func() {
 		settingsRow(c, "连接与设置备份", "导出连接、分组、快捷命令、转发和常规设置，不包含密码、私钥内容或 known_hosts。", func() {
 			ui.Row(c).Gap(6).Children(func() {
@@ -803,6 +843,7 @@ func (a *App) settingsShortcuts(c *ui.Context, t *ui.Theme) {
 		{"连接管理器", "Ctrl Alt C"},
 		{"终端查找", "Ctrl Shift F"},
 		{"服务器监控", "Ctrl B"},
+		{"服务器总览", "Ctrl Alt M"},
 		{"底部面板", "Ctrl J"},
 		{"全局搜索", "Ctrl K"},
 		{"保存远程编辑", "Ctrl S"},
@@ -975,6 +1016,35 @@ func (a *App) loadSettings() {
 			a.settings.TransferConflict = n
 		}
 	}
+	if values["connection.monitor_alerts"] == "0" {
+		a.settings.MonitorAlerts = false
+	}
+	if values["connection.monitor_disconnect"] == "0" {
+		a.settings.MonitorDisconnect = false
+	}
+	if values["connection.monitor_desktop"] == "0" {
+		a.settings.MonitorDesktop = false
+	}
+	if v := values["connection.monitor_cpu"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 50 && n <= 100 {
+			a.settings.MonitorCPU = n
+		}
+	}
+	if v := values["connection.monitor_memory"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 50 && n <= 100 {
+			a.settings.MonitorMemory = n
+		}
+	}
+	if v := values["connection.monitor_disk"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 50 && n <= 100 {
+			a.settings.MonitorDisk = n
+		}
+	}
+	if v := values["connection.monitor_latency"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 50 && n <= 5000 {
+			a.settings.MonitorLatency = n
+		}
+	}
 
 	a.settingsFontSize = strconv.Itoa(a.settings.FontSize)
 	a.settingsScrollback = strconv.Itoa(a.settings.ScrollbackMB)
@@ -983,6 +1053,14 @@ func (a *App) loadSettings() {
 	a.settingsFontPick = fontChoiceForFamily(a.settings.FontFamily)
 	a.transferLimitPick = transferConcurrencyLabel(a.settings.TransferConcurrency)
 	a.transferConflictPick = transferConflictLabel(transferConflict(a.settings.TransferConflict))
+	a.monitorCPUPick = monitorPercentLabel(a.settings.MonitorCPU)
+	a.monitorMemPick = monitorPercentLabel(a.settings.MonitorMemory)
+	a.monitorDiskPick = monitorPercentLabel(a.settings.MonitorDisk)
+	a.monitorLatencyPick = monitorLatencyLabel(a.settings.MonitorLatency)
+	a.resetMonitorThresholdAlerts()
+	if !a.settings.MonitorDisconnect {
+		a.clearMonitorAlertKind(monitorAlertDisconnect)
+	}
 }
 
 func (a *App) saveSettings() {
@@ -1002,22 +1080,44 @@ func (a *App) saveSettings() {
 	a.settings.ScrollbackMB = scroll
 	a.settings.TransferConcurrency = transferConcurrencyValue(a.transferLimitPick)
 	a.settings.TransferConflict = int(transferConflictValue(a.transferConflictPick))
+	oldMonitor := a.settings
+	a.settings.MonitorCPU = monitorPercentValue(a.monitorCPUPick)
+	a.settings.MonitorMemory = monitorPercentValue(a.monitorMemPick)
+	a.settings.MonitorDisk = monitorPercentValue(a.monitorDiskPick)
+	a.settings.MonitorLatency = monitorLatencyValue(a.monitorLatencyPick)
+	if !a.settings.MonitorAlerts ||
+		oldMonitor.MonitorCPU != a.settings.MonitorCPU ||
+		oldMonitor.MonitorMemory != a.settings.MonitorMemory ||
+		oldMonitor.MonitorDisk != a.settings.MonitorDisk ||
+		oldMonitor.MonitorLatency != a.settings.MonitorLatency {
+		a.resetMonitorThresholdAlerts()
+	}
+	if !a.settings.MonitorDisconnect {
+		a.clearMonitorAlertKind(monitorAlertDisconnect)
+	}
 
 	if a.store != nil {
 		values := map[string]string{
-			"terminal.font.family":      a.settings.FontFamily,
-			"terminal.font.size":        strconv.Itoa(size),
-			"terminal.scrollback_mb":    strconv.Itoa(scroll),
-			"terminal.theme":            strconv.Itoa(a.settings.Theme),
-			"terminal.scheme":           a.settings.TerminalScheme,
-			"terminal.log_highlight":    a.logHighlightValue(),
-			"ui.accent":                 strconv.Itoa(a.settings.Accent),
-			"terminal.copy_on_select":   boolText(a.settings.CopyOnSelect),
-			"terminal.find_highlight":   boolText(a.settings.FindHighlight),
-			"connection.auto_reconnect": boolText(a.settings.AutoReconnect),
-			"workspace.restore":         boolText(a.settings.RestoreWorkspace),
-			"transfer.concurrency":      strconv.Itoa(a.settings.TransferConcurrency),
-			"transfer.conflict":         strconv.Itoa(a.settings.TransferConflict),
+			"terminal.font.family":          a.settings.FontFamily,
+			"terminal.font.size":            strconv.Itoa(size),
+			"terminal.scrollback_mb":        strconv.Itoa(scroll),
+			"terminal.theme":                strconv.Itoa(a.settings.Theme),
+			"terminal.scheme":               a.settings.TerminalScheme,
+			"terminal.log_highlight":        a.logHighlightValue(),
+			"ui.accent":                     strconv.Itoa(a.settings.Accent),
+			"terminal.copy_on_select":       boolText(a.settings.CopyOnSelect),
+			"terminal.find_highlight":       boolText(a.settings.FindHighlight),
+			"connection.auto_reconnect":     boolText(a.settings.AutoReconnect),
+			"workspace.restore":             boolText(a.settings.RestoreWorkspace),
+			"transfer.concurrency":          strconv.Itoa(a.settings.TransferConcurrency),
+			"transfer.conflict":             strconv.Itoa(a.settings.TransferConflict),
+			"connection.monitor_alerts":     boolText(a.settings.MonitorAlerts),
+			"connection.monitor_disconnect": boolText(a.settings.MonitorDisconnect),
+			"connection.monitor_desktop":    boolText(a.settings.MonitorDesktop),
+			"connection.monitor_cpu":        strconv.Itoa(a.settings.MonitorCPU),
+			"connection.monitor_memory":     strconv.Itoa(a.settings.MonitorMemory),
+			"connection.monitor_disk":       strconv.Itoa(a.settings.MonitorDisk),
+			"connection.monitor_latency":    strconv.Itoa(a.settings.MonitorLatency),
 		}
 		for key, value := range values {
 			if err := a.store.SetSetting(a.ctx, key, value); err != nil {

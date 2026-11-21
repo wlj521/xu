@@ -19,6 +19,9 @@ func TestWorkspaceSnapshotKeepsServerTabOrder(t *testing.T) {
 		{id: 4, kind: tabConnecting, conn: &connectingTab{profile: store.Profile{ID: 33}}},
 	}
 	a.activeTab = 2
+	a.terminalSplit = &terminalSplit{
+		firstID: 2, secondID: 3, layout: splitLayoutRows, ratio: 41,
+	}
 
 	got := a.workspaceSnapshot()
 	want := []int64{22, 11, 33}
@@ -32,6 +35,12 @@ func TestWorkspaceSnapshotKeepsServerTabOrder(t *testing.T) {
 	}
 	if got.Active != 1 {
 		t.Fatalf("active tab = %d, want 1", got.Active)
+	}
+	if got.Split == nil {
+		t.Fatal("split layout was not saved")
+	}
+	if got.Split.Layout != "rows" || got.Split.First != 0 || got.Split.Second != 1 || got.Split.Ratio != 41 {
+		t.Fatalf("saved split = %+v", got.Split)
 	}
 }
 
@@ -62,6 +71,9 @@ func TestWorkspaceSaveLoadAndRestoreTabs(t *testing.T) {
 		{id: 2, kind: tabTerminal, term: &termSession{profileID: 1}},
 	}
 	a.activeTab = 1
+	a.terminalSplit = &terminalSplit{
+		firstID: 1, secondID: 2, layout: splitLayoutRows, ratio: 38,
+	}
 	a.saveWorkspace()
 
 	b := New()
@@ -71,6 +83,11 @@ func TestWorkspaceSaveLoadAndRestoreTabs(t *testing.T) {
 	}
 	if len(b.workspace.Tabs) != 2 || b.workspace.Tabs[0] != 2 || b.workspace.Active != 1 {
 		t.Fatalf("loaded workspace = %+v", b.workspace)
+	}
+	if b.workspace.Split == nil || b.workspace.Split.Layout != "rows" ||
+		b.workspace.Split.First != 0 || b.workspace.Split.Second != 1 ||
+		b.workspace.Split.Ratio != 38 {
+		t.Fatalf("loaded split = %+v", b.workspace.Split)
 	}
 
 	b.restoreWorkspaceTabs()
@@ -85,6 +102,33 @@ func TestWorkspaceSaveLoadAndRestoreTabs(t *testing.T) {
 	}
 	if b.activeTab != 1 || len(b.workspaceQueue) != 2 {
 		t.Fatalf("restore state: active=%d queue=%v", b.activeTab, b.workspaceQueue)
+	}
+	if b.terminalSplit == nil || b.terminalSplit.firstID != b.tabs[0].id ||
+		b.terminalSplit.secondID != b.tabs[1].id || b.terminalSplit.layout != splitLayoutRows ||
+		b.terminalSplit.ratio != 38 {
+		t.Fatalf("restored split = %+v", b.terminalSplit)
+	}
+}
+
+func TestWorkspaceIgnoresSplitNotInvolvingActiveTab(t *testing.T) {
+	mygo.App.SetPath(mygo.PathUserData, t.TempDir())
+	t.Cleanup(func() { mygo.App.SetPath(mygo.PathUserData, "") })
+
+	ctx := context.Background()
+	st, err := store.Open(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SetSetting(ctx, workspaceSettingKey,
+		`{"tabs":[1,2,3],"active":2,"split":{"layout":"columns","first":0,"second":1,"ratio":50}}`); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.SetStore(st)
+	if a.workspace.Split != nil {
+		t.Fatalf("split not containing the active tab was kept: %+v", a.workspace.Split)
 	}
 }
 

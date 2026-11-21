@@ -46,6 +46,8 @@ func (a *App) openConnectionManager() {
 func (a *App) shellMain(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Grow(1).FillHeight().Background(colPanelDeep).Children(func() {
 		a.tabStrip(c, t)
+		a.syncInputBanner(c, t)
+		a.monitorAlertBanner(c, t)
 		switch {
 		case a.connectingTabActive():
 			a.connectingTabView(c, t, a.activeTabRef())
@@ -53,10 +55,17 @@ func (a *App) shellMain(c *ui.Context, t *ui.Theme) {
 			a.quickConnectView(c, t)
 		case len(a.terms) == 0:
 			a.shellWelcome(c, t)
+		case a.monitorOpen && a.activeTerminal() != nil && !a.activeTerminal().local:
+			a.monitorView(c, t)
 		default:
 			local := a.activeTerminal() != nil && a.activeTerminal().local
 			termPane := func() {
 				ui.Column(c).FillHeight().Background(colTermBg).Children(func() {
+					if a.splitReady() {
+						first, second := a.splitTabs()
+						a.terminalSplitView(c, first, second)
+						return
+					}
 					a.terminal(c)
 				})
 			}

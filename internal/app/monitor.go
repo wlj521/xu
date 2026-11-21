@@ -75,10 +75,7 @@ func (a *App) startMonitorFor(ts *termSession, open bool) {
 					if a.monitors[ts.ID] != ms {
 						return
 					}
-					ms.samples = append(ms.samples, s)
-					if len(ms.samples) > 180 {
-						ms.samples = ms.samples[len(ms.samples)-180:]
-					}
+					a.recordMonitorSample(ts, s)
 				})
 			},
 			func(err error) {
@@ -131,28 +128,34 @@ func (a *App) restartMonitor(ts *termSession) {
 	a.startMonitor(ts)
 }
 
+func (a *App) closeMonitor() {
+	a.monitorOpen = false
+	if ts := a.activeTerminal(); ts != nil {
+		ts.focusRequest = true
+	}
+}
+
 func (a *App) monitorView(c *ui.Context, t *ui.Theme) {
 	ts := a.activeTerminal()
 	if ts == nil {
-		a.monitorOpen = false
+		a.closeMonitor()
+		return
+	}
+	if c.KeyDown(ui.KeyEscape) {
+		a.closeMonitor()
 		return
 	}
 	ms := a.monitors[ts.ID]
 
 	ui.Column(c).Grow(1).Padding(24, 28, 20, 28).Gap(14).Children(func() {
-		pageHeader(c, t, iconActivity, "服务器监控", ts.Title, func() {
-			if ghostAction(c, t, "monitor-terminal", "终端", iconTerm).Clicked() {
-				a.monitorOpen = false
-			}
-			if ghostAction(c, t, "monitor-files", "文件", iconFolder).Clicked() {
-				a.monitorOpen = false
-				a.filesOpen = true
-				a.openFiles()
-			}
+		pageHeader(c, t, iconActivity, "服务器监控", ts.Title+" · 按 Esc 返回终端", func() {
 			if ms != nil {
 				if ghostAction(c, t, "monitor-restart", "重新采集", iconRefresh).Clicked() {
 					a.restartMonitor(ts)
 				}
+			}
+			if iconButton(c, t, "monitor-close", iconClose, "关闭监控（Esc）").Clicked() {
+				a.closeMonitor()
 			}
 		})
 
