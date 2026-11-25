@@ -6,7 +6,7 @@
 
 ![Xu 欢迎页：快速连接、连接管理、最近连接与工作台能力](design/images/welcome.png)
 
-- 版本：`0.4.2`
+- 版本：`0.4.3`
 - 技术栈：Go `1.27.4` + [mygo](https://github.com/egoist/mygo) `0.10.0` 原生 UI + Ghostty VT
 - 平台：Windows（x64）、macOS（Universal）、Linux（amd64 / arm64）
 - 项目主页：<https://wlj521.github.io/xu/>
@@ -105,9 +105,9 @@ build\windows-amd64\MD5SUMS
 `SHA256SUMS` / `MD5SUMS` 是便携版和安装包的校验值（`sha256sum` / `md5sum` 格式）。建议使用 SHA-256 校验完整性；MD5 仅为兼容旧工具保留，不建议作为安全校验。Windows 上可这样对照：
 
 ```powershell
-Get-FileHash .\xu-setup-0.4.2-amd64.exe -Algorithm SHA256
+Get-FileHash .\xu-setup-0.4.3-amd64.exe -Algorithm SHA256
 # 或者
-certutil -hashfile .\xu-setup-0.4.2-amd64.exe SHA256
+certutil -hashfile .\xu-setup-0.4.3-amd64.exe SHA256
 ```
 
 只生成免安装版时使用：
@@ -217,8 +217,8 @@ powershell -ExecutionPolicy Bypass -File .\build-local.ps1
 Release 同时包含各平台的 `update-*.json`、签名更新归档和 `install.sh` / `install.ps1`，并生成统一的 `SHA256SUMS` / `MD5SUMS`。
 
 ```bash
-git tag v0.4.2
-git push origin v0.4.2
+git tag v0.4.3
+git push origin v0.4.3
 ```
 
 工作流会核对标签与 `mygo.json` 的 `version`，发版前先更新版本号。macOS 和 Linux 可以使用同一条安装脚本：

@@ -91,3 +91,35 @@ func TestSessionEndingSkipsQuitConfirmation(t *testing.T) {
 			e.DefaultPrevented(), a.quitConfirmOpen, a.quitInProgress)
 	}
 }
+
+func TestUpdateRelaunchSkipsQuitConfirmation(t *testing.T) {
+	a := New()
+	a.stop()
+	a.tabs = []*appTab{{id: 1, kind: tabQuickConnect}}
+	a.updateRelaunch = true
+
+	e := &mygo.QuitEvent{}
+	a.handleBeforeQuit(e)
+	if e.DefaultPrevented() || a.quitConfirmOpen || !a.quitInProgress {
+		t.Fatalf("update relaunch: prevented=%v modal=%v progress=%v",
+			e.DefaultPrevented(), a.quitConfirmOpen, a.quitInProgress)
+	}
+
+	closeEvent := &mygo.CloseEvent{}
+	a.handleWindowClose(closeEvent)
+	if closeEvent.DefaultPrevented() {
+		t.Fatal("the update relaunch window close asked for confirmation")
+	}
+}
+
+func TestCanceledRelaunchRestoresQuitConfirmation(t *testing.T) {
+	a := New()
+	a.stop()
+	a.updateRelaunch = true
+
+	a.handleQuitCanceled()
+	if a.quitInProgress || a.updateRelaunch {
+		t.Fatalf("canceled update relaunch left progress=%v relaunch=%v",
+			a.quitInProgress, a.updateRelaunch)
+	}
+}

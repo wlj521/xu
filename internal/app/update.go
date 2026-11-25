@@ -118,6 +118,7 @@ func (a *App) installUpdate() {
 				return
 			}
 			a.updateProgress = 1
+			a.updateRelaunch = true
 			mygo.App.Relaunch()
 		})
 	}()

@@ -22,7 +22,7 @@ func (a *App) openQuitConfirm() {
 }
 
 func (a *App) handleWindowClose(e *mygo.CloseEvent) {
-	if a.quitAllowed || a.quitInProgress || !a.hasOpenTabs() {
+	if a.quitAllowed || a.quitInProgress || a.updateRelaunch || !a.hasOpenTabs() {
 		return
 	}
 	e.PreventDefault()
@@ -30,7 +30,7 @@ func (a *App) handleWindowClose(e *mygo.CloseEvent) {
 }
 
 func (a *App) handleBeforeQuit(e *mygo.QuitEvent) {
-	if e.SessionEnding || a.quitAllowed {
+	if e.SessionEnding || a.quitAllowed || a.updateRelaunch {
 		a.quitInProgress = true
 		return
 	}
@@ -44,6 +44,7 @@ func (a *App) handleBeforeQuit(e *mygo.QuitEvent) {
 
 func (a *App) handleQuitCanceled() {
 	a.quitInProgress = false
+	a.updateRelaunch = false
 }
 
 func (a *App) confirmQuit() {

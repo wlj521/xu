@@ -153,6 +153,7 @@ type App struct {
 	updateAvailable  *mygo.Update
 	updateProgress   float64
 	updateInstalling bool
+	updateRelaunch   bool
 
 	// Quick-connect page filter.
 	quickFilter string
