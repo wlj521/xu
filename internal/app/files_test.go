@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,6 +64,15 @@ func clickText(tt *ui.Tester, s string) error {
 		return fmt.Errorf("no element shows %q", s)
 	}
 	tt.ClickAt(box.X+box.W/2, box.Y+box.H/2)
+	return nil
+}
+
+func clickTextWith(tt *ui.Tester, mods ui.Modifiers, s string) error {
+	box, ok := tt.Find(s)
+	if !ok {
+		return fmt.Errorf("no element shows %q", s)
+	}
+	tt.ClickAtWith(mods, box.X+box.W/2, box.Y+box.H/2)
 	return nil
 }
 
@@ -357,6 +368,61 @@ func TestSingleClickFileOnlyChoosesIt(t *testing.T) {
 	if b.remoteErr != "" {
 		t.Fatalf("clicking a file must not navigate: err=%q", b.remoteErr)
 	}
+}
+
+func TestRemoteFileTableMultiSelectsWithCtrlAndShift(t *testing.T) {
+	_, b, tt := newRemoteDockApp(t)
+	b.remoteEntries = append(b.remoteEntries, fakeInfo{name: "readme.md", size: 8})
+	tt.Frame()
+
+	tt.Advance(time.Second)
+	if err := clickText(tt, "etc/"); err != nil {
+		t.Fatalf("click first file: %v", err)
+	}
+	tt.Advance(time.Second)
+	if err := clickTextWith(tt, ui.Cmd, "readme.md"); err != nil {
+		t.Fatalf("ctrl-click third file: %v", err)
+	}
+	if b.remoteSelection.Len() != 2 ||
+		!b.remoteSelection.Has(remoteFileKey("etc")) ||
+		!b.remoteSelection.Has(remoteFileKey("readme.md")) {
+		t.Fatalf("ctrl selection = %v", remoteSelectedNames(b))
+	}
+	tt.Frame()
+	if !tt.HasText("已选 2 / 3 项") {
+		t.Fatalf("selected count missing; texts = %q", tt.Texts())
+	}
+
+	tt.Advance(time.Second)
+	if err := clickTextWith(tt, ui.Cmd, "readme.md"); err != nil {
+		t.Fatalf("ctrl-click selected file: %v", err)
+	}
+	if b.remoteSelection.Len() != 1 || !b.remoteSelection.Has(remoteFileKey("etc")) {
+		t.Fatalf("ctrl toggle left %v", remoteSelectedNames(b))
+	}
+
+	tt.Advance(time.Second)
+	if err := clickText(tt, "notes.txt"); err != nil {
+		t.Fatalf("click anchor file: %v", err)
+	}
+	tt.Advance(time.Second)
+	if err := clickTextWith(tt, ui.Shift, "readme.md"); err != nil {
+		t.Fatalf("shift-click end file: %v", err)
+	}
+	if b.remoteSelection.Len() != 2 ||
+		!b.remoteSelection.Has(remoteFileKey("notes.txt")) ||
+		!b.remoteSelection.Has(remoteFileKey("readme.md")) {
+		t.Fatalf("shift selection = %v", remoteSelectedNames(b))
+	}
+}
+
+func remoteSelectedNames(b *fileBrowser) []string {
+	out := make([]string, 0, b.remoteSelection.Len())
+	for key := range b.remoteSelection.All() {
+		out = append(out, strings.TrimPrefix(key, "r:"))
+	}
+	sort.Strings(out)
+	return out
 }
 
 func TestFileTableSelectionUsesPaleBackground(t *testing.T) {

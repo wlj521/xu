@@ -40,6 +40,7 @@ type fileBrowser struct {
 	localSel       int
 	localErr       string
 	localState     ui.ListState
+	localSelection ui.Selection[string]
 
 	remoteDir       string
 	remotePathInput string
@@ -51,6 +52,7 @@ type fileBrowser struct {
 	remoteSel       int
 	remoteErr       string
 	remoteState     ui.ListState
+	remoteSelection ui.Selection[string]
 	// quickDel keeps one rm per browser in flight, so repeated clicks cannot
 	// post overlapping refreshes or delete a path twice.
 	quickDel bool
@@ -82,8 +84,10 @@ func newFileBrowser(termID int64, client *sftp.Client, localDir, remoteHome stri
 
 	b.localState.Selected = &b.localSel
 	b.remoteState.Selected = &b.remoteSel
-	b.localState.Key = func(i int) any { return "l:" + entryAt(b.localEntries, i) }
-	b.remoteState.Key = func(i int) any { return "r:" + entryAt(b.remoteEntries, i) }
+	b.localState.Key = func(i int) any { return localFileKey(entryAt(b.localEntries, i)) }
+	b.remoteState.Key = func(i int) any { return remoteFileKey(entryAt(b.remoteEntries, i)) }
+	b.localState.Selection = &b.localSelection
+	b.remoteState.Selection = &b.remoteSelection
 	b.localState.Label = func(i int) string { return entryAt(b.localEntries, i) }
 	b.remoteState.Label = func(i int) string { return entryAt(b.remoteEntries, i) }
 
@@ -380,7 +384,7 @@ func bottomRemoteCell(c *ui.Context, b *fileBrowser, row, col int) {
 		return
 	}
 	f := b.remoteEntries[row]
-	chosen := b.remoteSel == row
+	chosen := b.remoteChosen(row)
 	switch col {
 	case 0:
 		fileCell(c, f, "—", 0, chosen)
@@ -509,7 +513,7 @@ func remoteCell(c *ui.Context, b *fileBrowser, row, col int) {
 			owner = fmt.Sprintf("%d / %d", st.UID, st.GID)
 		}
 	}
-	fileCell(c, f, owner, col, b.remoteSel == row)
+	fileCell(c, f, owner, col, b.remoteChosen(row))
 }
 
 func (a *App) navigateLocal(b *fileBrowser, dir string) {
@@ -531,6 +535,7 @@ func (b *fileBrowser) setLocalDir(dir string) error {
 	b.localPathInput = dir
 	b.localEntries = entries
 	b.localSel = -1
+	b.localSelection.Clear()
 	b.localErr = ""
 
 	// Keep the open tree branch in sync with the table, like loadRemote does.
@@ -588,6 +593,7 @@ func (b *fileBrowser) loadRemote() {
 	sortEntries(entries)
 	b.remoteEntries = entries
 	b.remoteSel = -1
+	b.remoteSelection.Clear()
 	b.remoteErr = ""
 
 	// Keep the tree branch for the current directory in sync with the table
@@ -1320,6 +1326,29 @@ func selectedEntry(list []os.FileInfo, selected int) os.FileInfo {
 		return nil
 	}
 	return list[selected]
+}
+
+func localFileKey(name string) string  { return "l:" + name }
+func remoteFileKey(name string) string { return "r:" + name }
+
+func (b *fileBrowser) localChosen(row int) bool {
+	if row < 0 || row >= len(b.localEntries) {
+		return false
+	}
+	if b.localSelection.Has(localFileKey(b.localEntries[row].Name())) {
+		return true
+	}
+	return b.localSelection.Len() == 0 && b.localSel == row
+}
+
+func (b *fileBrowser) remoteChosen(row int) bool {
+	if row < 0 || row >= len(b.remoteEntries) {
+		return false
+	}
+	if b.remoteSelection.Has(remoteFileKey(b.remoteEntries[row].Name())) {
+		return true
+	}
+	return b.remoteSelection.Len() == 0 && b.remoteSel == row
 }
 
 func entryAt(list []os.FileInfo, i int) string {

@@ -18,6 +18,11 @@ const (
 	monitorAlertDisk       = "disk"
 	monitorAlertLatency    = "latency"
 	monitorAlertDisconnect = "disconnect"
+
+	monitorPercentMin = 50
+	monitorPercentMax = 100
+	monitorLatencyMin = 50
+	monitorLatencyMax = 5000
 )
 
 type monitorSessionAlertState struct {
@@ -50,43 +55,30 @@ var notifyMonitorDesktop = func(title, body string) {
 	}).Show()
 }
 
-func monitorPercentOptions() []string {
-	return []string{"70%", "75%", "80%", "85%", "90%", "95%"}
+func monitorPercentValue(input string) (int, bool) {
+	text := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(input), "%"))
+	v, err := strconv.Atoi(text)
+	return v, err == nil && v >= monitorPercentMin && v <= monitorPercentMax
 }
 
-func monitorPercentValue(label string) int {
-	v, err := strconv.Atoi(strings.TrimSuffix(strings.TrimSpace(label), "%"))
-	if err != nil || v < 50 || v > 100 {
-		return 90
-	}
-	return v
-}
-
-func monitorPercentLabel(value int) string {
-	if value < 50 || value > 100 {
+func monitorPercentInput(value int) string {
+	if value < monitorPercentMin || value > monitorPercentMax {
 		value = 90
 	}
-	return fmt.Sprintf("%d%%", value)
+	return strconv.Itoa(value)
 }
 
-func monitorLatencyOptions() []string {
-	return []string{"200 ms", "300 ms", "500 ms", "800 ms", "1000 ms"}
+func monitorLatencyValue(input string) (int, bool) {
+	text := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(input), "ms"))
+	v, err := strconv.Atoi(text)
+	return v, err == nil && v >= monitorLatencyMin && v <= monitorLatencyMax
 }
 
-func monitorLatencyValue(label string) int {
-	label = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(label), "ms"))
-	v, err := strconv.Atoi(label)
-	if err != nil || v < 50 || v > 5000 {
-		return 500
-	}
-	return v
-}
-
-func monitorLatencyLabel(value int) string {
-	if value < 50 || value > 5000 {
+func monitorLatencyInput(value int) string {
+	if value < monitorLatencyMin || value > monitorLatencyMax {
 		value = 500
 	}
-	return fmt.Sprintf("%d ms", value)
+	return strconv.Itoa(value)
 }
 
 func (a *App) recordMonitorSample(ts *termSession, sample monitorx.Sample) {
@@ -259,9 +251,9 @@ func (a *App) activeMonitorAlertsForTerm(termID int64) []monitorAlertNotice {
 	return out
 }
 
-func (a *App) latestActiveMonitorAlert() (monitorAlertNotice, bool) {
+func (a *App) latestActiveMonitorAlertForTerm(termID int64) (monitorAlertNotice, bool) {
 	for _, notice := range a.monitorAlerts {
-		if !notice.Active {
+		if !notice.Active || notice.TermID != termID {
 			continue
 		}
 		if notice.Critical {
@@ -269,7 +261,7 @@ func (a *App) latestActiveMonitorAlert() (monitorAlertNotice, bool) {
 		}
 	}
 	for _, notice := range a.monitorAlerts {
-		if notice.Active {
+		if notice.Active && notice.TermID == termID {
 			return notice, true
 		}
 	}

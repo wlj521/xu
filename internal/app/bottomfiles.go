@@ -72,9 +72,7 @@ func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 				if row < 0 || row >= len(b.remoteEntries) {
 					return
 				}
-				cell := ui.Box(c).Fill().OnClick(func() {
-					b.remoteSel = row
-				})
+				cell := ui.Box(c).Fill()
 				cell.ContextMenu(func(m *ui.Menu) {
 					b.remoteSel = row
 					a.fileContextMenu(m, b, true)
@@ -88,7 +86,7 @@ func (a *App) bottomFileTable(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 						cell.Background(colCyan.Alpha(0.14))
 					}
 				}
-				if cell.DoubleClicked() {
+				if cell.RowDoubleClicked() {
 					b.remoteSel = row
 					a.openRemoteSelected(b)
 					opened = true
@@ -152,7 +150,11 @@ func (a *App) bottomPathBar(c *ui.Context, t *ui.Theme, b *fileBrowser) {
 			})
 		}
 
-		ui.Text(c, fmt.Sprintf("%d 项", len(b.remoteEntries))).FontSize(9.2).
+		itemCount := fmt.Sprintf("%d 项", len(b.remoteEntries))
+		if selected := b.remoteSelection.Len(); selected > 0 {
+			itemCount = fmt.Sprintf("已选 %d / %d 项", selected, len(b.remoteEntries))
+		}
+		ui.Text(c, itemCount).FontSize(9.2).
 			Font("Cascadia Code").TextColor(colMuted2).NoWrap()
 
 		ui.Box(c).Width(1).Height(15).Background(colLine).MarginX(5)

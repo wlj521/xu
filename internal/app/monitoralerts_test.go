@@ -95,6 +95,73 @@ func TestMonitorDisconnectAlertOnlyOnStateChange(t *testing.T) {
 	}
 }
 
+func TestMonitorAlertBannerOnlyShowsForActiveConnection(t *testing.T) {
+	a := New()
+	a.stop()
+	a.profiles = []store.Profile{
+		{ID: 11, Name: "alpha", Host: "alpha.example.com", Port: 22, Username: "root"},
+		{ID: 22, Name: "beta", Host: "beta.example.com", Port: 2222, Username: "ops"},
+	}
+	alpha := monitorTestSession()
+	beta := &termSession{
+		ID: 2, Title: "beta", profileID: 22,
+		profile: sshx.Profile{Host: "beta.example.com", Port: 2222, Username: "ops"},
+	}
+	a.terms = []*termSession{alpha, beta}
+	a.syncTabs()
+	a.syncMonitorConnectionAlerts()
+
+	a.activateTabIndex(1)
+	alpha.exited = true
+	a.syncMonitorConnectionAlerts()
+	a.pendingMonitorToasts = nil
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	if tt.HasText("1 个服务器告警") {
+		t.Fatalf("an alert from another tab leaked into the active tab; texts = %q", tt.Texts())
+	}
+
+	a.activateTabIndex(0)
+	tt.Frame()
+	if !tt.HasText("1 个服务器告警") || !tt.HasText("SSH 连接已断开") {
+		t.Fatalf("the disconnected tab lost its alert; texts = %q", tt.Texts())
+	}
+}
+
+func TestMonitorAlertBannerKeepsSameServerTabsIndependent(t *testing.T) {
+	a := New()
+	a.stop()
+	a.profiles = []store.Profile{
+		{ID: 11, Name: "测试", Host: "test.example.com", Port: 22, Username: "root"},
+	}
+	first := monitorTestSession()
+	first.ID = 1
+	first.Title = "测试"
+	second := monitorTestSession()
+	second.ID = 2
+	second.Title = "测试"
+	a.terms = []*termSession{first, second}
+	a.syncTabs()
+	a.syncMonitorConnectionAlerts()
+
+	second.exited = true
+	a.syncMonitorConnectionAlerts()
+	a.pendingMonitorToasts = nil
+
+	tt := ui.NewTester(a.View, 1440, 900)
+	tt.Frame()
+	if tt.HasText("1 个服务器告警") {
+		t.Fatalf("the disconnected duplicate tab leaked into the healthy tab; texts = %q", tt.Texts())
+	}
+
+	a.activateTabIndex(1)
+	tt.Frame()
+	if !tt.HasText("1 个服务器告警") || !tt.HasText("SSH 连接已断开") {
+		t.Fatalf("the disconnected tab lost its own alert; texts = %q", tt.Texts())
+	}
+}
+
 func TestMonitorDisconnectClearsStaleThresholdAlerts(t *testing.T) {
 	a := New()
 	a.stop()
@@ -249,10 +316,10 @@ func TestMonitorAlertSettingsPersist(t *testing.T) {
 	a.settings.MonitorAlerts = false
 	a.settings.MonitorDisconnect = false
 	a.settings.MonitorDesktop = false
-	a.monitorCPUPick = "80%"
-	a.monitorMemPick = "85%"
-	a.monitorDiskPick = "95%"
-	a.monitorLatencyPick = "300 ms"
+	a.monitorCPUPick = "83"
+	a.monitorMemPick = "71"
+	a.monitorDiskPick = "96"
+	a.monitorLatencyPick = "237"
 	a.saveSettings()
 	if a.settingsErr != "" {
 		t.Fatalf("save settings: %s", a.settingsErr)
@@ -263,8 +330,38 @@ func TestMonitorAlertSettingsPersist(t *testing.T) {
 	if b.settings.MonitorAlerts || b.settings.MonitorDisconnect || b.settings.MonitorDesktop {
 		t.Fatalf("monitor switches did not persist: %+v", b.settings)
 	}
-	if b.settings.MonitorCPU != 80 || b.settings.MonitorMemory != 85 ||
-		b.settings.MonitorDisk != 95 || b.settings.MonitorLatency != 300 {
+	if b.settings.MonitorCPU != 83 || b.settings.MonitorMemory != 71 ||
+		b.settings.MonitorDisk != 96 || b.settings.MonitorLatency != 237 {
 		t.Fatalf("monitor thresholds did not persist: %+v", b.settings)
+	}
+}
+
+func TestMonitorThresholdInputValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value string
+		check func(string) (int, bool)
+	}{
+		{name: "percent minimum", value: "50%", check: monitorPercentValue},
+		{name: "percent maximum", value: "100", check: monitorPercentValue},
+		{name: "latency minimum", value: "50", check: monitorLatencyValue},
+		{name: "latency maximum", value: "5000 ms", check: monitorLatencyValue},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, ok := tc.check(tc.value); !ok {
+				t.Fatalf("%q should be accepted", tc.value)
+			}
+		})
+	}
+
+	a := New()
+	a.stop()
+	a.monitorCPUPick = "49"
+	a.saveSettings()
+	if a.settingsErr != "CPU 阈值需为 50–100 的整数" {
+		t.Fatalf("invalid CPU threshold error = %q", a.settingsErr)
+	}
+	if a.settings.MonitorCPU != 90 {
+		t.Fatalf("invalid input changed the saved CPU threshold to %d", a.settings.MonitorCPU)
 	}
 }

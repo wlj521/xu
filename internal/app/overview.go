@@ -272,11 +272,14 @@ func (a *App) overviewMetric(c *ui.Context, label, value, detail string, color u
 }
 
 func (a *App) monitorAlertBanner(c *ui.Context, t *ui.Theme) {
-	count := a.activeMonitorAlertServerCount()
-	if count == 0 {
+	ts := a.activeTerminal()
+	if ts == nil || ts.local {
 		return
 	}
-	notice, _ := a.latestActiveMonitorAlert()
+	notice, ok := a.latestActiveMonitorAlertForTerm(ts.ID)
+	if !ok {
+		return
+	}
 	color := colAmber
 	if notice.Critical {
 		color = colRed
@@ -285,7 +288,7 @@ func (a *App) monitorAlertBanner(c *ui.Context, t *ui.Theme) {
 		Background(color.Alpha(0.1)).BorderWidth(0, 0, 1, 0).
 		BorderColor(color.Alpha(0.24)).Children(func() {
 		iconEl(c, iconAlert, 12, color)
-		ui.Text(c, fmt.Sprintf("%d 个服务器告警 · %s", count, shortLabel(notice.Message, 88))).
+		ui.Text(c, fmt.Sprintf("1 个服务器告警 · %s", shortLabel(notice.Message, 88))).
 			FontSize(9).TextColor(color).NoWrap()
 		ui.Text(c, "").Grow(1)
 		ui.Text(c, "只在状态变化时提醒").FontSize(8.2).TextColor(colMuted2).NoWrap()

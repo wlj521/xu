@@ -763,18 +763,28 @@ func (a *App) settingsConnection(c *ui.Context, t *ui.Theme) {
 		settingsRow(c, "桌面通知", "Xu 在后台时发送系统通知；窗口在前台时使用应用内提示。", func() {
 			ui.Switch(c, &a.settings.MonitorDesktop)
 		})
-		settingsRow(c, "资源阈值", "CPU / 内存 / 磁盘使用率。", func() {
-			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+		settingsRow(c, "资源阈值", "CPU / 内存 / 磁盘使用率，范围 50–100%；默认 90%。", func() {
+			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "CPU").FontSize(8.2).TextColor(colMuted2)
-				ui.Select(c, &a.monitorCPUPick, monitorPercentOptions()).Width(72)
+				ui.TextInput(c.Key("monitor-cpu"), &a.monitorCPUPick).Width(48).Height(28).
+					Font("Cascadia Code").FontSize(9.5).MaxLength(5).Label("CPU 阈值")
+				ui.Text(c, "%").FontSize(8.2).TextColor(colMuted2)
 				ui.Text(c, "内存").FontSize(8.2).TextColor(colMuted2)
-				ui.Select(c, &a.monitorMemPick, monitorPercentOptions()).Width(72)
+				ui.TextInput(c.Key("monitor-memory"), &a.monitorMemPick).Width(48).Height(28).
+					Font("Cascadia Code").FontSize(9.5).MaxLength(5).Label("内存阈值")
+				ui.Text(c, "%").FontSize(8.2).TextColor(colMuted2)
 				ui.Text(c, "磁盘").FontSize(8.2).TextColor(colMuted2)
-				ui.Select(c, &a.monitorDiskPick, monitorPercentOptions()).Width(72)
+				ui.TextInput(c.Key("monitor-disk"), &a.monitorDiskPick).Width(48).Height(28).
+					Font("Cascadia Code").FontSize(9.5).MaxLength(5).Label("磁盘阈值")
+				ui.Text(c, "%").FontSize(8.2).TextColor(colMuted2)
 			})
 		})
-		settingsRow(c, "延迟阈值", "通过 SSH keepalive 测得的往返时间。", func() {
-			ui.Select(c, &a.monitorLatencyPick, monitorLatencyOptions()).Width(96)
+		settingsRow(c, "延迟阈值", "通过 SSH keepalive 测得的往返时间，范围 50–5000 ms；默认 500 ms。", func() {
+			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+				ui.TextInput(c.Key("monitor-latency"), &a.monitorLatencyPick).Width(56).Height(28).
+					Font("Cascadia Code").FontSize(9.5).MaxLength(5).Label("延迟阈值")
+				ui.Text(c, "ms").FontSize(8.2).TextColor(colMuted2)
+			})
 		})
 		settingsNote(c, iconActivity, "超过阈值后需回落到阈值以下才会再次提醒，避免同一告警持续刷屏。")
 	})
@@ -1026,22 +1036,22 @@ func (a *App) loadSettings() {
 		a.settings.MonitorDesktop = false
 	}
 	if v := values["connection.monitor_cpu"]; v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 50 && n <= 100 {
+		if n, err := strconv.Atoi(v); err == nil && n >= monitorPercentMin && n <= monitorPercentMax {
 			a.settings.MonitorCPU = n
 		}
 	}
 	if v := values["connection.monitor_memory"]; v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 50 && n <= 100 {
+		if n, err := strconv.Atoi(v); err == nil && n >= monitorPercentMin && n <= monitorPercentMax {
 			a.settings.MonitorMemory = n
 		}
 	}
 	if v := values["connection.monitor_disk"]; v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 50 && n <= 100 {
+		if n, err := strconv.Atoi(v); err == nil && n >= monitorPercentMin && n <= monitorPercentMax {
 			a.settings.MonitorDisk = n
 		}
 	}
 	if v := values["connection.monitor_latency"]; v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 50 && n <= 5000 {
+		if n, err := strconv.Atoi(v); err == nil && n >= monitorLatencyMin && n <= monitorLatencyMax {
 			a.settings.MonitorLatency = n
 		}
 	}
@@ -1053,10 +1063,10 @@ func (a *App) loadSettings() {
 	a.settingsFontPick = fontChoiceForFamily(a.settings.FontFamily)
 	a.transferLimitPick = transferConcurrencyLabel(a.settings.TransferConcurrency)
 	a.transferConflictPick = transferConflictLabel(transferConflict(a.settings.TransferConflict))
-	a.monitorCPUPick = monitorPercentLabel(a.settings.MonitorCPU)
-	a.monitorMemPick = monitorPercentLabel(a.settings.MonitorMemory)
-	a.monitorDiskPick = monitorPercentLabel(a.settings.MonitorDisk)
-	a.monitorLatencyPick = monitorLatencyLabel(a.settings.MonitorLatency)
+	a.monitorCPUPick = monitorPercentInput(a.settings.MonitorCPU)
+	a.monitorMemPick = monitorPercentInput(a.settings.MonitorMemory)
+	a.monitorDiskPick = monitorPercentInput(a.settings.MonitorDisk)
+	a.monitorLatencyPick = monitorLatencyInput(a.settings.MonitorLatency)
 	a.resetMonitorThresholdAlerts()
 	if !a.settings.MonitorDisconnect {
 		a.clearMonitorAlertKind(monitorAlertDisconnect)
@@ -1074,6 +1084,26 @@ func (a *App) saveSettings() {
 		a.settingsErr = "回滚缓冲需在 1–100 MB 之间"
 		return
 	}
+	cpu, ok := monitorPercentValue(a.monitorCPUPick)
+	if !ok {
+		a.settingsErr = "CPU 阈值需为 50–100 的整数"
+		return
+	}
+	memory, ok := monitorPercentValue(a.monitorMemPick)
+	if !ok {
+		a.settingsErr = "内存阈值需为 50–100 的整数"
+		return
+	}
+	disk, ok := monitorPercentValue(a.monitorDiskPick)
+	if !ok {
+		a.settingsErr = "磁盘阈值需为 50–100 的整数"
+		return
+	}
+	latency, ok := monitorLatencyValue(a.monitorLatencyPick)
+	if !ok {
+		a.settingsErr = "延迟阈值需为 50–5000 的整数"
+		return
+	}
 
 	a.settings.FontFamily = strings.TrimSpace(a.settings.FontFamily)
 	a.settings.FontSize = size
@@ -1081,10 +1111,14 @@ func (a *App) saveSettings() {
 	a.settings.TransferConcurrency = transferConcurrencyValue(a.transferLimitPick)
 	a.settings.TransferConflict = int(transferConflictValue(a.transferConflictPick))
 	oldMonitor := a.settings
-	a.settings.MonitorCPU = monitorPercentValue(a.monitorCPUPick)
-	a.settings.MonitorMemory = monitorPercentValue(a.monitorMemPick)
-	a.settings.MonitorDisk = monitorPercentValue(a.monitorDiskPick)
-	a.settings.MonitorLatency = monitorLatencyValue(a.monitorLatencyPick)
+	a.settings.MonitorCPU = cpu
+	a.settings.MonitorMemory = memory
+	a.settings.MonitorDisk = disk
+	a.settings.MonitorLatency = latency
+	a.monitorCPUPick = monitorPercentInput(cpu)
+	a.monitorMemPick = monitorPercentInput(memory)
+	a.monitorDiskPick = monitorPercentInput(disk)
+	a.monitorLatencyPick = monitorLatencyInput(latency)
 	if !a.settings.MonitorAlerts ||
 		oldMonitor.MonitorCPU != a.settings.MonitorCPU ||
 		oldMonitor.MonitorMemory != a.settings.MonitorMemory ||
